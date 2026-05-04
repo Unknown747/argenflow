@@ -1,253 +1,450 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ArgenFlow V4 Pro | Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-dark: #0f1117;
-            --card-bg: #1a1d26;
-            --accent-gold: #ffd700;
-            --accent-blue: #3b82f6;
-            --danger: #ef4444;
-            --success: #10b981;
-            --text-main: #e2e8f0;
-            --text-dim: #94a3b8;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ArgenFlow V5 — Dashboard</title>
+<style>
+  :root {
+    --bg:       #0f1117;
+    --surface:  #1a1d27;
+    --surface2: #22263a;
+    --border:   #2e3350;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --green:    #22c55e;
+    --red:      #ef4444;
+    --yellow:   #f59e0b;
+    --blue:     #3b82f6;
+    --purple:   #a855f7;
+    --teal:     #14b8a6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
 
-        body {
-            background-color: var(--bg-dark);
-            color: var(--text-main);
-            font-family: 'Inter', sans-serif;
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-        }
+  /* ── Header ─────────────────────────────── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header h1 { font-size: 18px; font-weight: 600; letter-spacing: .5px; }
+  header .version { color: var(--muted); font-size: 12px; }
+  .badge {
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+  }
+  .badge-demo  { background: #1d4ed8; color: #bfdbfe; }
+  .badge-real  { background: #7f1d1d; color: #fca5a5; }
+  .badge-ai    { background: #064e3b; color: #6ee7b7; font-size: 10px; }
+  .badge-pausa { background: #78350f; color: #fcd34d; font-size: 10px; }
+  .badge-volat { background: #7f1d1d; color: #fca5a5; font-size: 10px; }
+  .spacer { flex: 1; }
 
-        header {
-            width: 100%;
-            padding: 20px 0;
-            text-align: center;
-            background: linear-gradient(to bottom, #1e293b, var(--bg-dark));
-            border-bottom: 1px solid #334155;
-        }
+  /* ── Layout ──────────────────────────────── */
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+  }
 
-        h1 {
-            margin: 0;
-            font-weight: 800;
-            letter-spacing: -1px;
-            color: var(--accent-gold);
-            text-transform: uppercase;
-        }
+  /* ── Cards ───────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .card-full  { grid-column: 1 / -1; }
+  .card-half  { grid-column: span 2; }
+  .card-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .card-value {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .card-sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
 
-        .container {
-            width: 90%;
-            max-width: 1000px;
-            margin-top: 30px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
+  /* ── Botón principal ─────────────────────── */
+  #btn-toggle {
+    width: 100%;
+    padding: 14px;
+    border-radius: 10px;
+    border: none;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all .2s;
+    letter-spacing: .3px;
+  }
+  #btn-toggle.off {
+    background: var(--green);
+    color: #fff;
+  }
+  #btn-toggle.on {
+    background: var(--red);
+    color: #fff;
+  }
+  #btn-toggle:hover { opacity: .88; transform: translateY(-1px); }
+  #btn-toggle:active { transform: translateY(0); }
 
-        .card {
-            background: var(--card-bg);
-            padding: 20px;
-            border-radius: 12px;
-            border: 1px solid #334155;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-        }
+  /* ── Indicador de estado ─────────────────── */
+  .status-dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+  .dot-on  { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .dot-off { background: var(--muted); }
+  .dot-warn { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
 
-        .full-width { grid-column: 1 / -1; }
+  /* ── Pares monitoreados ───────────────────── */
+  .pares-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .par-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .par-name { font-weight: 600; font-size: 13px; }
+  .par-ok   { color: var(--green); font-size: 11px; }
+  .par-skip { color: var(--muted); font-size: 11px; }
 
-        .stat-value {
-            font-size: 2rem;
-            font-weight: 800;
-            margin: 10px 0;
-            font-family: 'JetBrains Mono', monospace;
-        }
+  /* ── Log ─────────────────────────────────── */
+  #log-box {
+    background: #0a0c12;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    height: 280px;
+    overflow-y: auto;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  #log-box::-webkit-scrollbar { width: 4px; }
+  #log-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
-        .status-badge {
-            display: inline-block;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
+  .log-line { padding: 1px 0; }
+  .log-ok     { color: var(--green); }
+  .log-err    { color: var(--red); }
+  .log-warn   { color: var(--yellow); }
+  .log-info   { color: var(--blue); }
+  .log-radar  { color: var(--muted); }
+  .log-time   { color: #374151; margin-right: 6px; }
 
-        .status-off { background: #334155; color: white; }
-        .status-on { background: var(--success); color: white; }
-        .status-sniper { background: var(--accent-gold); color: black; }
+  /* ── Sección noticias ────────────────────── */
+  .noticia-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .noticia-item:last-child { border-bottom: none; }
+  .noticia-desc { font-size: 13px; }
+  .noticia-tiempo {
+    font-size: 11px;
+    color: var(--yellow);
+    white-space: nowrap;
+    margin-left: 12px;
+  }
+  .noticia-hora {
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: 8px;
+  }
+  .sin-noticias { color: var(--muted); font-size: 13px; padding: 8px 0; }
 
-        .controls {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        button {
-            padding: 15px;
-            border: none;
-            border-radius: 8px;
-            font-weight: 800;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-transform: uppercase;
-            font-size: 0.9rem;
-        }
-
-        #btnMain { background: var(--accent-blue); color: white; }
-        #btnMain.active { background: var(--danger); }
-
-        #btnSniper { background: #374151; color: var(--accent-gold); border: 2px solid var(--accent-gold); }
-        #btnSniper.active { background: var(--accent-gold); color: black; }
-
-        button:hover { transform: translateY(-2px); opacity: 0.9; }
-
-        #console {
-            background: #000;
-            height: 300px;
-            border-radius: 8px;
-            padding: 15px;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.85rem;
-            overflow-y: auto;
-            border: 1px solid #334155;
-            line-height: 1.5;
-        }
-
-        .log-entry { margin-bottom: 5px; border-left: 3px solid #334155; padding-left: 10px; }
-        .log-sniper { border-color: var(--accent-gold); color: var(--accent-gold); }
-        .log-error { border-color: var(--danger); color: var(--danger); }
-        .log-success { border-color: var(--success); color: var(--success); }
-
-        @media (max-width: 768px) {
-            .container { grid-template-columns: 1fr; }
-        }
-    </style>
+  /* ── AI Manager badge inline ─────────────── */
+  .ai-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+  }
+</style>
 </head>
 <body>
 
-    <header>
-        <h1>ArgenFlow V4 <span style="color:white">PRO</span></h1>
-        <p style="color: var(--text-dim); margin-top: 5px;">Sistema Quant de Alta Frecuencia</p>
-    </header>
+<header>
+  <h1>ArgenFlow V5</h1>
+  <span class="version">Exness · MT5</span>
+  <span id="badge-cuenta" class="badge badge-demo">DEMO</span>
+  <span id="badge-ai" class="badge badge-ai">AI: —</span>
+  <span class="spacer"></span>
+  <span style="color:var(--muted); font-size:12px;" id="header-server">—</span>
+</header>
 
-    <div class="container">
-        <div class="card">
-            <h3 style="color: var(--text-dim); margin: 0;">Balance Total (USD)</h3>
-            <div id="balanceValue" class="stat-value">$0.00</div>
-            <div>
-                Estado: <span id="mainStatusBadge" class="status-badge status-off">Inactivo</span>
-                <span id="sniperStatusBadge" class="status-badge status-off" style="display: none;">SNIPER</span>
-            </div>
-        </div>
+<main>
 
-        <div class="card">
-            <h3 style="color: var(--text-dim); margin-bottom: 15px;">Panel de Control</h3>
-            <div class="controls">
-                <button id="btnMain" onclick="toggleBot()">Iniciar Robot Principal</button>
-                <button id="btnSniper" onclick="toggleSniper()">🎯 Modo Sniper Oro (HFT)</button>
-            </div>
-        </div>
+  <!-- Balance -->
+  <div class="card">
+    <div class="card-label">Balance</div>
+    <div class="card-value" id="balance">—</div>
+    <div class="card-sub" id="equity-row">Equity: —</div>
+  </div>
 
-        <div class="card full-width">
-            <h3 style="color: var(--text-dim); margin-bottom: 10px;">Monitor de Actividad en Tiempo Real</h3>
-            <div id="console">
-                <div class="log-entry">Esperando conexión con el servidor...</div>
-            </div>
-        </div>
+  <!-- Estado del bot -->
+  <div class="card">
+    <div class="card-label">Estado del Bot</div>
+    <div style="margin-top:4px;">
+      <span class="status-dot dot-off" id="status-dot"></span>
+      <span id="status-text" style="font-size:15px; font-weight:600;">Inactivo</span>
     </div>
+    <div class="card-sub" id="login-row">Login: —</div>
+  </div>
 
-    <script>
-        let botActive = false;
-        let sniperActive = false;
+  <!-- Control -->
+  <div class="card" style="display:flex; flex-direction:column; justify-content:center;">
+    <button id="btn-toggle" class="off" onclick="toggleBot()">
+      ▶ INICIAR BOT
+    </button>
+    <div style="margin-top:10px; font-size:11px; color:var(--muted); text-align:center;" id="demo-aviso">
+      Modo DEMO activo — sin riesgo real
+    </div>
+  </div>
 
-        async function updateStatus() {
-            try {
-                const response = await fetch('/api/status');
-                const data = await response.json();
+  <!-- Pares monitoreados -->
+  <div class="card card-half">
+    <div class="card-label">Pares Monitoreados</div>
+    <div class="pares-grid" id="pares-grid">
+      <div class="par-item"><span class="par-name">EURUSDm</span><span class="par-ok">●</span></div>
+      <div class="par-item"><span class="par-name">GBPUSDm</span><span class="par-ok">●</span></div>
+      <div class="par-item"><span class="par-name">USDJPYm</span><span class="par-ok">●</span></div>
+      <div class="par-item"><span class="par-name">XAUUSDm</span><span class="par-ok">●</span></div>
+    </div>
+  </div>
 
-                // Actualizar Balance
-                document.getElementById('balanceValue').innerText = `$${data.balance.toFixed(2)}`;
+  <!-- Próxima noticia -->
+  <div class="card">
+    <div class="card-label">⚡ Próxima Noticia Alto Impacto</div>
+    <div id="proxima-noticia-box" style="margin-top:8px;">
+      <span class="sin-noticias">Cargando...</span>
+    </div>
+    <div style="margin-top:12px;">
+      <div class="card-label" style="margin-bottom:6px;">Calendario próx. 24h</div>
+      <div id="noticias-lista">
+        <span class="sin-noticias">—</span>
+      </div>
+    </div>
+  </div>
 
-                // Actualizar Badges
-                const mainBadge = document.getElementById('mainStatusBadge');
-                const sniperBadge = document.getElementById('sniperStatusBadge');
+  <!-- Log -->
+  <div class="card card-full">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <div class="card-label" style="margin-bottom:0;">Log en Tiempo Real</div>
+      <button onclick="clearLog()"
+        style="background:none; border:1px solid var(--border); color:var(--muted);
+               padding:4px 10px; border-radius:6px; cursor:pointer; font-size:11px;">
+        Limpiar
+      </button>
+    </div>
+    <div id="log-box">
+      <div class="log-line log-radar">Esperando que el bot inicie...</div>
+    </div>
+  </div>
 
-                if (data.active) {
-                    mainBadge.innerText = "Operando";
-                    mainBadge.className = "status-badge status-on";
-                } else {
-                    mainBadge.innerText = "Inactivo";
-                    mainBadge.className = "status-badge status-off";
-                }
+</main>
 
-                if (data.sniper) {
-                    sniperBadge.style.display = "inline-block";
-                    sniperBadge.className = "status-badge status-sniper";
-                } else {
-                    sniperBadge.style.display = "none";
-                }
+<script>
+  let botActivo = false;
+  let esDemo    = true;
 
-                // Procesar Logs
-                if (data.new_logs && data.new_logs.length > 0) {
-                    const consoleDiv = document.getElementById('console');
-                    data.new_logs.forEach(log => {
-                        const entry = document.createElement('div');
-                        entry.className = 'log-entry';
-                        
-                        if (log.includes('⚡ SNIPER')) entry.classList.add('log-sniper');
-                        if (log.includes('🔥')) entry.classList.add('log-success');
-                        if (log.includes('❌')) entry.classList.add('log-error');
-                        
-                        const time = new Date().toLocaleTimeString();
-                        entry.innerHTML = `<span style="color: #64748b;">[${time}]</span> ${log}`;
-                        consoleDiv.appendChild(entry);
-                    });
-                    consoleDiv.scrollTop = consoleDiv.scrollHeight;
-                }
-            } catch (e) {
-                console.error("Error actualizando status", e);
-            }
-        }
+  // ── Polling principal ──────────────────────────────────
+  async function fetchStatus() {
+    try {
+      const r    = await fetch('/api/status');
+      const data = await r.json();
 
-        async function toggleBot() {
-            botActive = !botActive;
-            const res = await fetch(`/api/toggle?active=${botActive}`);
-            const data = await res.json();
-            
-            const btn = document.getElementById('btnMain');
-            if (botActive) {
-                btn.innerText = "Detener Robot";
-                btn.classList.add('active');
-            } else {
-                btn.innerText = "Iniciar Robot Principal";
-                btn.classList.remove('active');
-            }
-        }
+      botActivo = data.active;
+      esDemo    = data.demo;
 
-        async function toggleSniper() {
-            sniperActive = !sniperActive;
-            const res = await fetch(`/api/toggle_sniper?active=${sniperActive}`);
-            const data = await res.json();
-            
-            const btn = document.getElementById('btnSniper');
-            if (sniperActive) {
-                btn.innerText = "🔴 Desactivar Sniper";
-                btn.classList.add('active');
-            } else {
-                btn.innerText = "🎯 Modo Sniper Oro (HFT)";
-                btn.classList.remove('active');
-            }
-        }
+      // Badge DEMO / REAL
+      const badgeCuenta = document.getElementById('badge-cuenta');
+      badgeCuenta.textContent = esDemo ? 'DEMO' : 'REAL';
+      badgeCuenta.className   = esDemo ? 'badge badge-demo' : 'badge badge-real';
 
-        // Intervalo de actualización: cada 2 segundos para la UI
-        setInterval(updateStatus, 2000);
-    </script>
+      // Balance y equity
+      const cur = data.currency || 'USD';
+      document.getElementById('balance').textContent =
+        data.balance.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + cur;
+      document.getElementById('equity-row').textContent =
+        'Equity: ' + data.equity.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + cur;
+
+      // Servidor y login
+      document.getElementById('header-server').textContent = data.server || '—';
+      document.getElementById('login-row').textContent = 'Login: ' + (data.login || '—');
+
+      // Estado del bot
+      const dot  = document.getElementById('status-dot');
+      const txt  = document.getElementById('status-text');
+      const btn  = document.getElementById('btn-toggle');
+      if (data.active) {
+        dot.className  = 'status-dot dot-on';
+        txt.textContent = 'Activo — Escaneando';
+        btn.textContent = '⏹ DETENER BOT';
+        btn.className   = 'on';
+      } else {
+        dot.className  = 'status-dot dot-off';
+        txt.textContent = 'Inactivo';
+        btn.textContent = '▶ INICIAR BOT';
+        btn.className   = 'off';
+      }
+
+      // Badge AIManager
+      const badgeAI = document.getElementById('badge-ai');
+      const aiEst   = data.ai_estado || '—';
+      badgeAI.textContent = 'AI: ' + aiEst;
+      if (aiEst === 'PAUSA_NOTICIA') {
+        badgeAI.className = 'badge badge-pausa';
+      } else if (aiEst === 'VOLÁTIL') {
+        badgeAI.className = 'badge badge-volat';
+      } else {
+        badgeAI.className = 'badge badge-ai';
+      }
+
+      // Próxima noticia
+      const pn = data.proxima_noticia;
+      const pnBox = document.getElementById('proxima-noticia-box');
+      if (pn) {
+        pnBox.innerHTML = `
+          <div style="color:var(--yellow); font-weight:700; font-size:14px;">${pn.descripcion}</div>
+          <div style="color:var(--muted); font-size:12px; margin-top:4px;">
+            ${pn.hora_utc} · en ${pn.en_minutos} minutos
+          </div>`;
+      } else {
+        pnBox.innerHTML = '<span class="sin-noticias">Sin noticias en las próximas horas</span>';
+      }
+
+      // Aviso demo
+      document.getElementById('demo-aviso').textContent =
+        esDemo ? 'Modo DEMO activo — sin riesgo real' : '⚠️ Cuenta REAL — operando con dinero real';
+
+      // Logs
+      if (data.new_logs && data.new_logs.length > 0) {
+        appendLogs(data.new_logs);
+      }
+
+    } catch (e) {
+      appendLogs(['❌ Sin conexión con el servidor']);
+    }
+  }
+
+  // ── Logs ──────────────────────────────────────────────
+  function appendLogs(lines) {
+    const box = document.getElementById('log-box');
+    const ahora = new Date().toLocaleTimeString('es-AR', {hour12:false});
+    lines.forEach(line => {
+      const div = document.createElement('div');
+      div.className = 'log-line ' + getLogClass(line);
+      div.innerHTML = `<span class="log-time">${ahora}</span>${escapeHtml(line)}`;
+      box.appendChild(div);
+    });
+    // Mantener scroll al fondo
+    box.scrollTop = box.scrollHeight;
+    // Limitar a 100 líneas en el DOM
+    while (box.children.length > 100) {
+      box.removeChild(box.firstChild);
+    }
+  }
+
+  function getLogClass(line) {
+    if (line.startsWith('✅')) return 'log-ok';
+    if (line.startsWith('❌')) return 'log-err';
+    if (line.startsWith('⚠️') || line.startsWith('🛑')) return 'log-warn';
+    if (line.startsWith('📡') || line.startsWith('😴') || line.startsWith('📉')) return 'log-radar';
+    if (line.startsWith('⏰') || line.startsWith('⚡')) return 'log-info';
+    return 'log-info';
+  }
+
+  function escapeHtml(text) {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function clearLog() {
+    document.getElementById('log-box').innerHTML =
+      '<div class="log-line log-radar">Log limpiado</div>';
+  }
+
+  // ── Toggle Bot ────────────────────────────────────────
+  async function toggleBot() {
+    const btn = document.getElementById('btn-toggle');
+    btn.disabled = true;
+    try {
+      const nuevo = !botActivo;
+      const r    = await fetch(`/api/toggle?active=${nuevo}`);
+      const data = await r.json();
+      if (data.status === 'error') {
+        appendLogs(['❌ ' + data.message]);
+      }
+      await fetchStatus();
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ── Calendario de noticias ─────────────────────────────
+  async function fetchNoticias() {
+    try {
+      const r    = await fetch('/api/noticias');
+      const data = await r.json();
+      const lista = document.getElementById('noticias-lista');
+      if (!data.noticias || data.noticias.length === 0) {
+        lista.innerHTML = '<span class="sin-noticias">Sin eventos en las próximas 24h ✅</span>';
+        return;
+      }
+      lista.innerHTML = data.noticias.map(n => `
+        <div class="noticia-item">
+          <span class="noticia-desc">${escapeHtml(n.descripcion)}</span>
+          <span>
+            <span class="noticia-hora">${n.hora_utc}</span>
+            <span class="noticia-tiempo">en ${n.en_minutos}m</span>
+          </span>
+        </div>`).join('');
+    } catch(e) { /* silencioso */ }
+  }
+
+  // ── Inicialización ────────────────────────────────────
+  fetchStatus();
+  fetchNoticias();
+  setInterval(fetchStatus,   5000);   // actualiza cada 5s
+  setInterval(fetchNoticias, 60000);  // noticias cada 1 min
+</script>
 </body>
 </html>
