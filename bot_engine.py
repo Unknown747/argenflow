@@ -104,8 +104,16 @@ class ArgenBotPro:
 
         # ── Trailing Stop (dari .env) ──────────────────────
         self.trailing_aktif     = os.getenv("TRAILING_AKTIF",    "true").lower() == "true"
-        self.trailing_be_pct    = float(os.getenv("TRAILING_BE_PCT",    "50"))  # % TP → breakeven
-        self.trailing_kunci_pct = float(os.getenv("TRAILING_KUNCI_PCT", "75"))  # % TP → kunci profit
+        self.trailing_be_pct    = float(os.getenv("TRAILING_BE_PCT",    "50"))
+        self.trailing_kunci_pct = float(os.getenv("TRAILING_KUNCI_PCT", "75"))
+
+        # ── Optimasi tambahan (dari .env) ──────────────────
+        self.adx_aktif        = os.getenv("ADX_AKTIF",   "true").lower() == "true"
+        self.adx_min          = int(os.getenv("ADX_MIN",          "25"))   # ADX < ini = sideways, skip
+        self.cooldown_menit   = int(os.getenv("COOLDOWN_MENIT",   "30"))   # Jeda min antar trade/simbol
+        self.max_trade_harian = int(os.getenv("MAX_TRADE_HARIAN", "5"))    # Maks order per hari
+        self.filter_senin     = os.getenv("FILTER_SENIN", "true").lower() == "true"
+        self.filter_jumat     = os.getenv("FILTER_JUMAT", "true").lower() == "true"
 
         # ── Tracking harian ───────────────────────────────
         self._saldo_awal_hari  = 0.0
@@ -113,6 +121,7 @@ class ArgenBotPro:
         self._trade_hari_ini   = 0
         self._pnl_hari_ini     = 0.0
         self._batas_rugi_aktif = False
+        self._cooldown_simbol  = {}   # simbol → datetime WIB terakhir order dibuka
 
         self.ai = AIManager()
         self._inisialisasi_log()
@@ -165,16 +174,20 @@ class ArgenBotPro:
 
     def dapatkan_statistik(self):
         return {
-            "trade_hari_ini":    self._trade_hari_ini,
-            "pnl_hari_ini":      self._pnl_hari_ini,
-            "batas_rugi_aktif":  self._batas_rugi_aktif,
-            "risiko_pct":        self.risiko_pct,
-            "max_rugi_pct":      self.max_rugi_harian_pct,
-            "sl_atr_mult":       self.sl_atr_mult,
-            "tp_atr_mult":       self.tp_atr_mult,
-            "trailing_aktif":    self.trailing_aktif,
-            "trailing_be_pct":   self.trailing_be_pct,
-            "trailing_kunci_pct":self.trailing_kunci_pct,
+            "trade_hari_ini":     self._trade_hari_ini,
+            "pnl_hari_ini":       self._pnl_hari_ini,
+            "batas_rugi_aktif":   self._batas_rugi_aktif,
+            "risiko_pct":         self.risiko_pct,
+            "max_rugi_pct":       self.max_rugi_harian_pct,
+            "sl_atr_mult":        self.sl_atr_mult,
+            "tp_atr_mult":        self.tp_atr_mult,
+            "trailing_aktif":     self.trailing_aktif,
+            "trailing_be_pct":    self.trailing_be_pct,
+            "trailing_kunci_pct": self.trailing_kunci_pct,
+            "adx_aktif":          self.adx_aktif,
+            "adx_min":            self.adx_min,
+            "cooldown_menit":     self.cooldown_menit,
+            "max_trade_harian":   self.max_trade_harian,
         }
 
     # ══════════════════════════════════════════════════════
@@ -182,12 +195,24 @@ class ArgenBotPro:
     # ══════════════════════════════════════════════════════
 
     def _dalam_sesi_aktif(self):
-        # Gunakan UTC untuk filter sesi (jam London/NY), WIB untuk tampilan
         sekarang_utc = datetime.datetime.utcnow()
+        sekarang_wib = _sekarang_wib()
+
+        # Sabtu & Minggu — pasar tutup
         if sekarang_utc.weekday() >= 5:
             return False
+
         if MODE_SIMULASI:
             return True
+
+        # Filter Senin pagi WIB (risiko gap weekend): 00:00–09:00 WIB
+        if self.filter_senin and sekarang_wib.weekday() == 0 and sekarang_wib.hour < 9:
+            return False
+
+        # Filter Jumat malam WIB (spread melebar jelang weekend): 22:00–24:00 WIB
+        if self.filter_jumat and sekarang_wib.weekday() == 4 and sekarang_wib.hour >= 22:
+            return False
+
         return JAM_MULAI_SESI <= sekarang_utc.hour < JAM_AKHIR_SESI
 
     # ══════════════════════════════════════════════════════
@@ -257,6 +282,60 @@ class ArgenBotPro:
                 and v2["close"] < v1["open"] and v2["open"] > v1["close"]):
             return "JUAL"
         return "TIDAK_ADA"
+
+    # ══════════════════════════════════════════════════════
+    #  FILTER ADX — KEKUATAN TREN
+    # ══════════════════════════════════════════════════════
+
+    def _hitung_adx(self, simbol, timeframe, periode=14):
+        """ADX: > adx_min = tren kuat (layak entry), < adx_min = sideways (skip)."""
+        rates = mt5.copy_rates_from_pos(simbol, timeframe, 0, periode * 2 + 2)
+        if rates is None or len(rates) < periode + 2:
+            return 0.0
+        tr_list, dm_plus, dm_minus = [], [], []
+        for i in range(1, len(rates)):
+            h, l, pc = rates[i]["high"], rates[i]["low"], rates[i-1]["close"]
+            ph, pl   = rates[i-1]["high"], rates[i-1]["low"]
+            tr = max(h - l, abs(h - pc), abs(l - pc))
+            tr_list.append(tr)
+            up   = h - ph
+            down = pl - l
+            dm_plus.append(up if up > down and up > 0 else 0.0)
+            dm_minus.append(down if down > up and down > 0 else 0.0)
+
+        def _wilder(arr, p):
+            s = sum(arr[:p])
+            out = [s]
+            for v in arr[p:]:
+                s = s - s / p + v
+                out.append(s)
+            return out
+
+        atr14 = _wilder(tr_list, periode)
+        dmp14 = _wilder(dm_plus,  periode)
+        dmm14 = _wilder(dm_minus, periode)
+        dx = []
+        for a, p, m in zip(atr14, dmp14, dmm14):
+            di_p = 100 * p / a if a > 0 else 0
+            di_m = 100 * m / a if a > 0 else 0
+            dx.append(100 * abs(di_p - di_m) / (di_p + di_m) if (di_p + di_m) > 0 else 0)
+        adx = sum(dx[-periode:]) / periode if len(dx) >= periode else 0.0
+        return round(adx, 1)
+
+    # ══════════════════════════════════════════════════════
+    #  FILTER COOLDOWN PER SIMBOL
+    # ══════════════════════════════════════════════════════
+
+    def _cek_cooldown(self, simbol):
+        """True jika simbol sudah melewati masa cooldown sejak order terakhir."""
+        terakhir = self._cooldown_simbol.get(simbol)
+        if terakhir is None:
+            return True
+        selang = (_sekarang_wib() - terakhir).total_seconds() / 60
+        return selang >= self.cooldown_menit
+
+    def _set_cooldown(self, simbol):
+        self._cooldown_simbol[simbol] = _sekarang_wib()
 
     # ══════════════════════════════════════════════════════
     #  KONFIRMASI MULTI-TIMEFRAME H1
@@ -471,6 +550,14 @@ class ArgenBotPro:
             self.is_running = False
             return log
 
+        # Cek batas trade harian
+        if self._trade_hari_ini >= self.max_trade_harian:
+            log.append(
+                f"🛑 Batas {self.max_trade_harian} trade/hari tercapai "
+                f"({self._trade_hari_ini} trade) — menunggu hari berikutnya"
+            )
+            return log
+
         # Trailing stop — jalankan setiap siklus scan
         log.extend(self._monitor_trailing_stop())
 
@@ -541,6 +628,24 @@ class ArgenBotPro:
                 )
                 continue
 
+            # Filter: ADX — pastikan tren cukup kuat, bukan sideways
+            if self.adx_aktif:
+                adx_val = self._hitung_adx(sim, mt5.TIMEFRAME_M15)
+                if adx_val < self.adx_min:
+                    log.append(
+                        f"📊 {sim}: ADX={adx_val} < {self.adx_min} — pasar sideways, dilewati{label_sim}"
+                    )
+                    continue
+
+            # Filter: Cooldown per simbol
+            if not self._cek_cooldown(sim):
+                terakhir = self._cooldown_simbol.get(sim)
+                menit_lalu = round((_sekarang_wib() - terakhir).total_seconds() / 60)
+                log.append(
+                    f"⏳ {sim}: cooldown aktif ({menit_lalu}/{self.cooldown_menit} mnt) — dilewati{label_sim}"
+                )
+                continue
+
             # Filter: Konfirmasi H1
             if not self._konfirmasi_h1(sim, arah_signal):
                 log.append(
@@ -571,6 +676,7 @@ class ArgenBotPro:
 
             if res and res.retcode == mt5.TRADE_RETCODE_DONE:
                 self._trade_hari_ini += 1
+                self._set_cooldown(sim)
                 rr = round(self.tp_atr_mult / self.sl_atr_mult, 1)
                 log.append(
                     f"✅ {arah_signal}{label_sim} — {sim} | "

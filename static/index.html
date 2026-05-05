@@ -308,6 +308,22 @@
         <span class="cfg-key">Ambang Skor</span>
         <span class="cfg-val">80 (ketat)</span>
       </div>
+      <div class="cfg-row">
+        <span class="cfg-key">Filter ADX (Sideways)</span>
+        <span class="cfg-val" id="adx-status">✅ ADX &gt; 25</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">Cooldown Per Simbol</span>
+        <span class="cfg-val" id="cooldown-status">⏳ 30 menit</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">Maks Trade / Hari</span>
+        <span class="cfg-val" id="max-trade-status">5 trade</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">Filter Senin/Jumat</span>
+        <span class="cfg-val">✅ Aktif</span>
+      </div>
       <div class="cfg-row" id="batas-row">
         <span class="cfg-key">Batas Rugi Hari Ini</span>
         <span class="cfg-val" id="batas-status">Belum Tercapai</span>
@@ -417,6 +433,21 @@
       document.getElementById('max-rugi-pct').textContent = (s.max_rugi_pct ?? 3.0).toFixed(1) + '%';
       document.getElementById('sl-mult').textContent = (s.sl_atr_mult ?? 1.5).toFixed(1);
       document.getElementById('tp-mult').textContent = (s.tp_atr_mult ?? 3.0).toFixed(1);
+
+      // Filter ADX
+      const adxEl = document.getElementById('adx-status');
+      if (s.adx_aktif !== false) {
+        adxEl.textContent = `✅ ADX > ${s.adx_min ?? 25}`;
+        adxEl.style.color = 'var(--teal)';
+      } else {
+        adxEl.textContent = '⛔ Nonaktif';
+        adxEl.style.color = 'var(--muted)';
+      }
+
+      // Cooldown & max trade
+      document.getElementById('cooldown-status').textContent = `⏳ ${s.cooldown_menit ?? 30} menit`;
+      document.getElementById('max-trade-status').textContent =
+        `${s.trade_hari_ini ?? 0} / ${s.max_trade_harian ?? 5} trade`;
 
       // Batas rugi
       const batasEl = document.getElementById('batas-status');
