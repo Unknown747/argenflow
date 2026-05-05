@@ -28,7 +28,6 @@
     min-height: 100vh;
   }
 
-  /* ── Header ─────────────────────────────── */
   header {
     background: var(--surface);
     border-bottom: 1px solid var(--border);
@@ -55,7 +54,6 @@
   .badge-volat { background: #7f1d1d; color: #fca5a5; font-size: 10px; }
   .spacer { flex: 1; }
 
-  /* ── Layout ──────────────────────────────── */
   main {
     max-width: 1100px;
     margin: 0 auto;
@@ -65,7 +63,6 @@
     gap: 16px;
   }
 
-  /* ── Kartu ───────────────────────────────── */
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -86,9 +83,12 @@
     font-weight: 700;
     line-height: 1;
   }
+  .card-value.sm { font-size: 20px; }
   .card-sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .val-green { color: var(--green); }
+  .val-red   { color: var(--red); }
+  .val-muted { color: var(--muted); }
 
-  /* ── Tombol utama ─────────────────────────── */
   #btn-toggle {
     width: 100%;
     padding: 14px;
@@ -100,18 +100,11 @@
     transition: all .2s;
     letter-spacing: .3px;
   }
-  #btn-toggle.off {
-    background: var(--green);
-    color: #fff;
-  }
-  #btn-toggle.on {
-    background: var(--red);
-    color: #fff;
-  }
-  #btn-toggle:hover { opacity: .88; transform: translateY(-1px); }
+  #btn-toggle.off { background: var(--green); color: #fff; }
+  #btn-toggle.on  { background: var(--red);   color: #fff; }
+  #btn-toggle:hover  { opacity: .88; transform: translateY(-1px); }
   #btn-toggle:active { transform: translateY(0); }
 
-  /* ── Indikator status ─────────────────────── */
   .status-dot {
     display: inline-block;
     width: 10px; height: 10px;
@@ -119,11 +112,28 @@
     margin-right: 8px;
     vertical-align: middle;
   }
-  .dot-on  { background: var(--green); box-shadow: 0 0 8px var(--green); }
-  .dot-off { background: var(--muted); }
+  .dot-on   { background: var(--green);  box-shadow: 0 0 8px var(--green); }
+  .dot-off  { background: var(--muted); }
   .dot-warn { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
 
-  /* ── Pasangan yang dipantau ───────────────── */
+  /* ── Statistik row ───── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .stat-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    text-align: center;
+  }
+  .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .stat-value { font-size: 18px; font-weight: 700; margin-top: 4px; }
+
+  /* ── Pasangan ─────────── */
   .pares-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -141,15 +151,14 @@
   }
   .par-name { font-weight: 600; font-size: 13px; }
   .par-ok   { color: var(--green); font-size: 11px; }
-  .par-skip { color: var(--muted); font-size: 11px; }
 
-  /* ── Log ─────────────────────────────────── */
+  /* ── Log ──────────────── */
   #log-box {
     background: #0a0c12;
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 14px;
-    height: 280px;
+    height: 300px;
     overflow-y: auto;
     font-family: 'Cascadia Code', 'Fira Code', monospace;
     font-size: 12px;
@@ -157,16 +166,15 @@
   }
   #log-box::-webkit-scrollbar { width: 4px; }
   #log-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .log-line  { padding: 1px 0; }
+  .log-ok    { color: var(--green); }
+  .log-err   { color: var(--red); }
+  .log-warn  { color: var(--yellow); }
+  .log-info  { color: var(--blue); }
+  .log-radar { color: var(--muted); }
+  .log-time  { color: #374151; margin-right: 6px; }
 
-  .log-line { padding: 1px 0; }
-  .log-ok     { color: var(--green); }
-  .log-err    { color: var(--red); }
-  .log-warn   { color: var(--yellow); }
-  .log-info   { color: var(--blue); }
-  .log-radar  { color: var(--muted); }
-  .log-time   { color: #374151; margin-right: 6px; }
-
-  /* ── Bagian berita ────────────────────────── */
+  /* ── Berita ───────────── */
   .noticia-item {
     display: flex;
     justify-content: space-between;
@@ -175,27 +183,24 @@
     border-bottom: 1px solid var(--border);
   }
   .noticia-item:last-child { border-bottom: none; }
-  .noticia-desc { font-size: 13px; }
-  .noticia-tiempo {
-    font-size: 11px;
-    color: var(--yellow);
-    white-space: nowrap;
-    margin-left: 12px;
-  }
-  .noticia-hora {
-    font-size: 11px;
-    color: var(--muted);
-    margin-left: 8px;
-  }
-  .sin-noticias { color: var(--muted); font-size: 13px; padding: 8px 0; }
+  .noticia-desc   { font-size: 13px; }
+  .noticia-tiempo { font-size: 11px; color: var(--yellow); white-space: nowrap; margin-left: 12px; }
+  .noticia-hora   { font-size: 11px; color: var(--muted); margin-left: 8px; }
+  .sin-noticias   { color: var(--muted); font-size: 13px; padding: 8px 0; }
 
-  /* ── Badge AI Manager ─────────────────────── */
-  .ai-row {
+  /* ── Konfigurasi panel ── */
+  .cfg-row {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 8px;
-    margin-top: 6px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
   }
+  .cfg-row:last-child { border-bottom: none; }
+  .cfg-key   { color: var(--muted); }
+  .cfg-val   { font-weight: 600; color: var(--teal); }
+  .batas-aktif { color: var(--red) !important; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -214,12 +219,12 @@
 
   <!-- Saldo -->
   <div class="card">
-    <div class="card-label">Saldo</div>
+    <div class="card-label">Saldo Akun</div>
     <div class="card-value" id="balance">—</div>
     <div class="card-sub" id="equity-row">Ekuitas: —</div>
   </div>
 
-  <!-- Status Bot -->
+  <!-- Status -->
   <div class="card">
     <div class="card-label">Status Bot</div>
     <div style="margin-top:4px;">
@@ -231,18 +236,39 @@
 
   <!-- Kontrol -->
   <div class="card" style="display:flex; flex-direction:column; justify-content:center;">
-    <button id="btn-toggle" class="off" onclick="toggleBot()">
-      ▶ JALANKAN BOT
-    </button>
+    <button id="btn-toggle" class="off" onclick="toggleBot()">▶ JALANKAN BOT</button>
     <div style="margin-top:10px; font-size:11px; color:var(--muted); text-align:center;" id="demo-aviso">
       Mode DEMO aktif — tanpa risiko nyata
     </div>
   </div>
 
-  <!-- Pasangan yang dipantau -->
+  <!-- Statistik harian (full width) -->
+  <div class="card card-full">
+    <div class="card-label">Statistik Harian & Konfigurasi Risiko</div>
+    <div class="stat-grid">
+      <div class="stat-item">
+        <div class="stat-label">P&L Hari Ini</div>
+        <div class="stat-value val-muted" id="pnl-hari">—</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Trade Hari Ini</div>
+        <div class="stat-value" id="trade-count">0</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Risiko / Trade</div>
+        <div class="stat-value val-green" id="risiko-pct">1.0%</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Batas Rugi / Hari</div>
+        <div class="stat-value" id="max-rugi-pct" style="color:var(--yellow)">3.0%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pasangan -->
   <div class="card card-half">
     <div class="card-label">Pasangan yang Dipantau</div>
-    <div class="pares-grid" id="pares-grid">
+    <div class="pares-grid">
       <div class="par-item"><span class="par-name">EURUSDm</span><span class="par-ok">●</span></div>
       <div class="par-item"><span class="par-name">GBPUSDm</span><span class="par-ok">●</span></div>
       <div class="par-item"><span class="par-name">USDJPYm</span><span class="par-ok">●</span></div>
@@ -250,16 +276,57 @@
     </div>
   </div>
 
-  <!-- Berita berikutnya -->
+  <!-- Konfigurasi optimasi -->
   <div class="card">
-    <div class="card-label">⚡ Berita Berdampak Tinggi Berikutnya</div>
-    <div id="proxima-noticia-box" style="margin-top:8px;">
-      <span class="sin-noticias">Memuat...</span>
+    <div class="card-label">⚙️ Optimasi Aktif</div>
+    <div style="margin-top:6px;">
+      <div class="cfg-row">
+        <span class="cfg-key">SL = ATR ×</span>
+        <span class="cfg-val" id="sl-mult">1.5</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">TP = ATR ×</span>
+        <span class="cfg-val" id="tp-mult">3.0</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">Rasio R:R</span>
+        <span class="cfg-val">1 : 2</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">Filter H1 MTF</span>
+        <span class="cfg-val">✅ Aktif</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">Filter Korelasi</span>
+        <span class="cfg-val">✅ EUR↔GBP</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">RSI Beli / Jual</span>
+        <span class="cfg-val">&lt;32 / &gt;68</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">Ambang Skor</span>
+        <span class="cfg-val">80 (ketat)</span>
+      </div>
+      <div class="cfg-row" id="batas-row">
+        <span class="cfg-key">Batas Rugi Hari Ini</span>
+        <span class="cfg-val" id="batas-status">Belum Tercapai</span>
+      </div>
     </div>
-    <div style="margin-top:12px;">
-      <div class="card-label" style="margin-bottom:6px;">Kalender 24 jam ke depan</div>
-      <div id="noticias-lista">
-        <span class="sin-noticias">—</span>
+  </div>
+
+  <!-- Berita -->
+  <div class="card card-full">
+    <div style="display:flex; gap:32px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:220px;">
+        <div class="card-label">⚡ Berita Berdampak Tinggi Berikutnya</div>
+        <div id="proxima-noticia-box" style="margin-top:8px;">
+          <span class="sin-noticias">Memuat...</span>
+        </div>
+      </div>
+      <div style="flex:2; min-width:280px;">
+        <div class="card-label" style="margin-bottom:6px;">Kalender 24 jam ke depan</div>
+        <div id="noticias-lista"><span class="sin-noticias">—</span></div>
       </div>
     </div>
   </div>
@@ -285,7 +352,6 @@
   let botAktif = false;
   let modeDemo = true;
 
-  // ── Polling utama ──────────────────────────────────────
   async function ambilStatus() {
     try {
       const r    = await fetch('/api/status');
@@ -295,33 +361,29 @@
       modeDemo = data.demo;
 
       // Badge SIMULASI
-      const badgeSim = document.getElementById('badge-sim');
-      if (data.simulasi) {
-        badgeSim.style.display = 'inline-block';
-      } else {
-        badgeSim.style.display = 'none';
-      }
+      document.getElementById('badge-sim').style.display =
+        data.simulasi ? 'inline-block' : 'none';
 
-      // Badge DEMO / REAL
+      // Badge DEMO/REAL
       const badgeAkun = document.getElementById('badge-cuenta');
       badgeAkun.textContent = modeDemo ? 'DEMO' : 'REAL';
       badgeAkun.className   = modeDemo ? 'badge badge-demo' : 'badge badge-real';
 
-      // Saldo dan ekuitas
+      // Saldo & ekuitas
       const mata = data.currency || 'USD';
       document.getElementById('balance').textContent =
-        data.balance.toLocaleString('id-ID', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + mata;
+        fmt(data.balance) + ' ' + mata;
       document.getElementById('equity-row').textContent =
-        'Ekuitas: ' + data.equity.toLocaleString('id-ID', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + mata;
+        'Ekuitas: ' + fmt(data.equity) + ' ' + mata;
 
-      // Server dan login
+      // Server & login
       document.getElementById('header-server').textContent = data.server || '—';
       document.getElementById('login-row').textContent = 'Login: ' + (data.login || '—');
 
       // Status bot
-      const dot  = document.getElementById('status-dot');
-      const txt  = document.getElementById('status-text');
-      const btn  = document.getElementById('btn-toggle');
+      const dot = document.getElementById('status-dot');
+      const txt = document.getElementById('status-text');
+      const btn = document.getElementById('btn-toggle');
       if (data.active) {
         dot.className   = 'status-dot dot-on';
         txt.textContent = 'Aktif — Memindai';
@@ -334,48 +396,65 @@
         btn.className   = 'off';
       }
 
-      // Badge AIManager
-      const badgeAI = document.getElementById('badge-ai');
+      // Badge AI
+      const badgeAI  = document.getElementById('badge-ai');
       const statusAI = data.ai_estado || '—';
       badgeAI.textContent = 'AI: ' + statusAI;
-      if (statusAI === 'PAUSA_NOTICIA') {
-        badgeAI.className = 'badge badge-pausa';
-      } else if (statusAI === 'VOLÁTIL') {
-        badgeAI.className = 'badge badge-volat';
+      badgeAI.className =
+        statusAI === 'PAUSA_NOTICIA' ? 'badge badge-pausa' :
+        statusAI === 'VOLÁTIL'       ? 'badge badge-volat' :
+                                       'badge badge-ai';
+
+      // Statistik harian
+      const s = data.statistik || {};
+      const pnl = s.pnl_hari_ini ?? 0;
+      const pnlEl = document.getElementById('pnl-hari');
+      pnlEl.textContent = (pnl >= 0 ? '+' : '') + fmt(pnl) + ' USD';
+      pnlEl.className   = 'stat-value ' + (pnl > 0 ? 'val-green' : pnl < 0 ? 'val-red' : 'val-muted');
+
+      document.getElementById('trade-count').textContent = s.trade_hari_ini ?? 0;
+      document.getElementById('risiko-pct').textContent  = (s.risiko_pct ?? 1.0).toFixed(1) + '%';
+      document.getElementById('max-rugi-pct').textContent = (s.max_rugi_pct ?? 3.0).toFixed(1) + '%';
+      document.getElementById('sl-mult').textContent = (s.sl_atr_mult ?? 1.5).toFixed(1);
+      document.getElementById('tp-mult').textContent = (s.tp_atr_mult ?? 3.0).toFixed(1);
+
+      // Batas rugi
+      const batasEl = document.getElementById('batas-status');
+      if (s.batas_rugi_aktif) {
+        batasEl.textContent = '🛑 TERCAPAI — Bot Berhenti';
+        batasEl.className   = 'cfg-val batas-aktif';
       } else {
-        badgeAI.className = 'badge badge-ai';
+        batasEl.textContent = '✅ Belum Tercapai';
+        batasEl.className   = 'cfg-val';
       }
 
       // Berita berikutnya
-      const bn = data.proxima_noticia;
+      const bn    = data.proxima_noticia;
       const bnBox = document.getElementById('proxima-noticia-box');
-      if (bn) {
-        bnBox.innerHTML = `
-          <div style="color:var(--yellow); font-weight:700; font-size:14px;">${bn.descripcion}</div>
-          <div style="color:var(--muted); font-size:12px; margin-top:4px;">
-            ${bn.hora_utc} · dalam ${bn.en_minutos} menit
-          </div>`;
-      } else {
-        bnBox.innerHTML = '<span class="sin-noticias">Tidak ada berita dalam beberapa jam ke depan</span>';
-      }
+      bnBox.innerHTML = bn
+        ? `<div style="color:var(--yellow);font-weight:700;font-size:14px;">${bn.descripcion}</div>
+           <div style="color:var(--muted);font-size:12px;margin-top:4px;">${bn.hora_utc} · dalam ${bn.en_minutos} menit</div>`
+        : '<span class="sin-noticias">Tidak ada berita dalam beberapa jam ke depan</span>';
 
       // Peringatan demo
       document.getElementById('demo-aviso').textContent =
-        modeDemo ? 'Mode DEMO aktif — tanpa risiko nyata' : '⚠️ Akun REAL — trading dengan uang nyata';
+        modeDemo ? 'Mode DEMO aktif — tanpa risiko nyata'
+                 : '⚠️ Akun REAL — trading dengan uang nyata';
 
       // Log
-      if (data.new_logs && data.new_logs.length > 0) {
-        tambahLog(data.new_logs);
-      }
+      if (data.new_logs && data.new_logs.length > 0) tambahLog(data.new_logs);
 
     } catch (e) {
       tambahLog(['❌ Tidak dapat terhubung ke server']);
     }
   }
 
-  // ── Log ────────────────────────────────────────────────
+  function fmt(n) {
+    return Number(n).toLocaleString('id-ID', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+
   function tambahLog(baris) {
-    const box = document.getElementById('log-box');
+    const box      = document.getElementById('log-box');
     const sekarang = new Date().toLocaleTimeString('id-ID', {hour12:false});
     baris.forEach(b => {
       const div = document.createElement('div');
@@ -384,25 +463,20 @@
       box.appendChild(div);
     });
     box.scrollTop = box.scrollHeight;
-    while (box.children.length > 100) {
-      box.removeChild(box.firstChild);
-    }
+    while (box.children.length > 120) box.removeChild(box.firstChild);
   }
 
-  function kelasLog(baris) {
-    if (baris.startsWith('✅')) return 'log-ok';
-    if (baris.startsWith('❌')) return 'log-err';
-    if (baris.startsWith('⚠️') || baris.startsWith('🛑')) return 'log-warn';
-    if (baris.startsWith('📡') || baris.startsWith('😴') || baris.startsWith('📉')) return 'log-radar';
-    if (baris.startsWith('⏰') || baris.startsWith('⚡')) return 'log-info';
+  function kelasLog(b) {
+    if (b.startsWith('✅')) return 'log-ok';
+    if (b.startsWith('❌')) return 'log-err';
+    if (b.startsWith('⚠️') || b.startsWith('🛑')) return 'log-warn';
+    if (b.startsWith('📡') || b.startsWith('📉')) return 'log-radar';
+    if (b.startsWith('⏰') || b.startsWith('⚡') || b.startsWith('🟢') || b.startsWith('🔴')) return 'log-info';
     return 'log-info';
   }
 
-  function escapHtml(teks) {
-    return teks
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
+  function escapHtml(t) {
+    return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
   function clearLog() {
@@ -410,34 +484,29 @@
       '<div class="log-line log-radar">Log dibersihkan</div>';
   }
 
-  // ── Toggle Bot ─────────────────────────────────────────
   async function toggleBot() {
     const btn = document.getElementById('btn-toggle');
     btn.disabled = true;
     try {
-      const statusBaru = !botAktif;
-      const r    = await fetch(`/api/toggle?active=${statusBaru}`);
+      const r    = await fetch(`/api/toggle?active=${!botAktif}`);
       const data = await r.json();
-      if (data.status === 'error') {
-        tambahLog(['❌ ' + data.message]);
-      }
+      if (data.status === 'error') tambahLog(['❌ ' + data.message]);
       await ambilStatus();
     } finally {
       btn.disabled = false;
     }
   }
 
-  // ── Kalender berita ────────────────────────────────────
   async function ambilBerita() {
     try {
       const r    = await fetch('/api/noticias');
       const data = await r.json();
-      const daftar = document.getElementById('noticias-lista');
-      if (!data.noticias || data.noticias.length === 0) {
-        daftar.innerHTML = '<span class="sin-noticias">Tidak ada acara dalam 24 jam ke depan ✅</span>';
+      const el   = document.getElementById('noticias-lista');
+      if (!data.noticias || !data.noticias.length) {
+        el.innerHTML = '<span class="sin-noticias">Tidak ada acara dalam 24 jam ke depan ✅</span>';
         return;
       }
-      daftar.innerHTML = data.noticias.map(n => `
+      el.innerHTML = data.noticias.map(n => `
         <div class="noticia-item">
           <span class="noticia-desc">${escapHtml(n.descripcion)}</span>
           <span>
@@ -445,14 +514,13 @@
             <span class="noticia-tiempo">dalam ${n.en_minutos}m</span>
           </span>
         </div>`).join('');
-    } catch(e) { /* diabaikan */ }
+    } catch(e) {}
   }
 
-  // ── Inisialisasi ───────────────────────────────────────
   ambilStatus();
   ambilBerita();
-  setInterval(ambilStatus,  5000);    // perbarui setiap 5 detik
-  setInterval(ambilBerita, 60000);    // berita setiap 1 menit
+  setInterval(ambilStatus,  5000);
+  setInterval(ambilBerita, 60000);
 </script>
 </body>
 </html>
