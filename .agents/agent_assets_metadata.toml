@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "Z8gowFt81wSnYybhN354L"
+uri = "file://DOKUMENTASI.md"
+type = "text"
+title = "ArgenFlow V5 Pro — Dokumentasi Lengkap"
