@@ -1,0 +1,7 @@
+# ArgenFlow V5 Pro — Dependensi Windows (dengan MT5 nyata)
+# Instal dengan: pip install -r requirements-windows.txt
+
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-dotenv==1.0.1
+MetaTrader5==5.0.45

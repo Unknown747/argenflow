@@ -49,6 +49,7 @@
   }
   .badge-demo  { background: #1d4ed8; color: #bfdbfe; }
   .badge-real  { background: #7f1d1d; color: #fca5a5; }
+  .badge-sim   { background: #4c1d95; color: #ddd6fe; font-size: 10px; }
   .badge-ai    { background: #064e3b; color: #6ee7b7; font-size: 10px; }
   .badge-pausa { background: #78350f; color: #fcd34d; font-size: 10px; }
   .badge-volat { background: #7f1d1d; color: #fca5a5; font-size: 10px; }
@@ -203,6 +204,7 @@
   <h1>ArgenFlow V5</h1>
   <span class="version">Exness · MT5</span>
   <span id="badge-cuenta" class="badge badge-demo">DEMO</span>
+  <span id="badge-sim" class="badge badge-sim" style="display:none;">SIMULASI</span>
   <span id="badge-ai" class="badge badge-ai">AI: —</span>
   <span class="spacer"></span>
   <span style="color:var(--muted); font-size:12px;" id="header-server">—</span>
@@ -291,6 +293,14 @@
 
       botAktif = data.active;
       modeDemo = data.demo;
+
+      // Badge SIMULASI
+      const badgeSim = document.getElementById('badge-sim');
+      if (data.simulasi) {
+        badgeSim.style.display = 'inline-block';
+      } else {
+        badgeSim.style.display = 'none';
+      }
 
       // Badge DEMO / REAL
       const badgeAkun = document.getElementById('badge-cuenta');

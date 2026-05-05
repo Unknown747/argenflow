@@ -2,6 +2,7 @@
 ArgenFlow V5 Pro — Mesin Trading (Mode Normal)
 ===============================================
 Exness + MetaTrader 5 | Akun Mikro
+Kompatibel: Windows (MT5 nyata) | Linux / Termux (Simulasi)
 
 Perbaikan dari V4:
   [1] RSI Wilder asli (pemulusan eksponensial, bukan SMA)
@@ -13,15 +14,10 @@ Perbaikan dari V4:
   [7] Log CSV otomatis setiap order dengan timestamp UTC
   [8] Integrasi ai_manager: jeda berita + evaluasi pasar
   [9] Penanganan error eksplisit dengan retcode pada setiap order
+ [10] Mode Simulasi otomatis di Linux/Termux (mt5_sim.py)
 """
 
-try:
-    import MetaTrader5 as mt5
-    MT5_TERSEDIA = True
-except ImportError:
-    mt5 = None
-    MT5_TERSEDIA = False
-
+import sys
 import os
 import csv
 import datetime
@@ -29,6 +25,30 @@ from dotenv import load_dotenv
 from ai_manager import AIManager
 
 load_dotenv()
+
+# ── Deteksi dan muat library MT5 ──────────────────────────
+def _muat_mt5():
+    """
+    Coba muat MetaTrader5 asli (Windows).
+    Jika tidak tersedia, gunakan simulator Linux/Termux.
+    """
+    try:
+        import MetaTrader5 as mt5_asli
+        return mt5_asli, False
+    except ImportError:
+        pass
+
+    # Fallback ke simulator
+    try:
+        import mt5_sim as mt5_sim_mod
+        return mt5_sim_mod, True
+    except ImportError:
+        return None, True
+
+mt5, MODE_SIMULASI = _muat_mt5()
+
+if mt5 is None:
+    raise RuntimeError("Tidak dapat memuat mt5 maupun mt5_sim. Pastikan mt5_sim.py ada.")
 
 JAM_MULAI_SESI = 8    # 08:00 UTC — pembukaan London
 JAM_AKHIR_SESI = 17   # 17:00 UTC — penutupan sesi NY
@@ -44,6 +64,7 @@ class ArgenBotPro:
 
         self.is_running   = False
         self.mode_sniper  = False
+        self.mode_simulasi = MODE_SIMULASI
 
         self.daftar_simbol = ["EURUSDm", "GBPUSDm", "USDJPYm", "XAUUSDm"]
         self.magic_number  = 20260422
@@ -64,6 +85,11 @@ class ArgenBotPro:
     # ── Koneksi ───────────────────────────────────────────────
 
     def conectar(self):
+        if MODE_SIMULASI:
+            mt5.initialize()
+            mt5.login(self.login, self.password, self.server)
+            return True, "Terhubung dalam Mode Simulasi (Linux/Termux)"
+
         if not mt5.initialize():
             return False, f"Gagal memulai MT5: {mt5.last_error()}"
         auth = mt5.login(self.login, self.password, self.server)
@@ -77,6 +103,9 @@ class ArgenBotPro:
         sekarang = datetime.datetime.utcnow()
         if sekarang.weekday() >= 5:
             return False
+        # Mode simulasi: aktif sepanjang hari kerja
+        if MODE_SIMULASI:
+            return True
         return JAM_MULAI_SESI <= sekarang.hour < JAM_AKHIR_SESI
 
     # ── Indikator ─────────────────────────────────────────────
@@ -136,14 +165,9 @@ class ArgenBotPro:
             return "JUAL"
         return "TIDAK_ADA"
 
-    # ── Filling mode aman untuk Exness ────────────────────────
+    # ── Filling mode ──────────────────────────────────────────
 
     def _dapatkan_filling_mode(self, simbol):
-        """
-        Membaca flag simbol secara real-time untuk mendeteksi
-        mode pengisian yang didukung. Menghindari penolakan
-        yang terjadi dengan IOC tetap pada akun ECN Exness.
-        """
         info = mt5.symbol_info(simbol)
         if info is None:
             return mt5.ORDER_FILLING_IOC
@@ -158,6 +182,7 @@ class ArgenBotPro:
 
     def escanear_normal(self):
         log = []
+        label_sim = " [SIM]" if MODE_SIMULASI else ""
 
         if not self._dalam_sesi_aktif():
             log.append("⏰ Di luar sesi London/NY — bot menunggu")
@@ -169,7 +194,8 @@ class ArgenBotPro:
             return log
 
         for sim in self.daftar_simbol:
-            if mt5.positions_get(symbol=sim):
+            posisi = mt5.positions_get(symbol=sim)
+            if posisi:
                 continue
 
             info = mt5.symbol_info(sim)
@@ -194,7 +220,7 @@ class ArgenBotPro:
                 continue
             harga = tick.last
 
-            # Penyesuaian ambang batas berdasarkan kondisi pasar (AIManager)
+            # Penyesuaian ambang batas berdasarkan kondisi pasar
             ambang = self.ambang_skor
             rates_m15 = mt5.copy_rates_from_pos(sim, mt5.TIMEFRAME_M15, 0, 20)
             if rates_m15 is not None and len(rates_m15) >= 15:
@@ -203,22 +229,22 @@ class ArgenBotPro:
                 rendah = [r["low"]   for r in rates_m15]
                 status_pasar, penyesuaian = self.ai.evaluasi_pasar(tutup, tinggi, rendah)
                 if penyesuaian is None:
-                    log.append(f"🛑 {sim}: pasar VOLATIL — AIManager memblokir masuk")
+                    log.append(f"🛑 {sim}: pasar VOLATIL — AIManager memblokir masuk{label_sim}")
                     continue
                 ambang = max(50, self.ambang_skor + penyesuaian)
 
             # Skor: EMA(40) + RSI(30) + Engulfing(30)
             skor = 0
             skor += 40 if harga > ema_val else -40
-            if rsi_val < 35:   skor += 30
-            elif rsi_val > 65: skor -= 30
+            if rsi_val < 35:    skor += 30
+            elif rsi_val > 65:  skor -= 30
             if pola == "BELI":  skor += 30
             elif pola == "JUAL": skor -= 30
 
             if skor >= ambang:
                 res = self.kirim_order(sim, 0, info, self.sl_pips, self.tp_pips)
                 if res and res.retcode == mt5.TRADE_RETCODE_DONE:
-                    log.append(f"✅ BELI — {sim} | Skor {skor}/{ambang} | RSI {rsi_val} | ATR {atr}")
+                    log.append(f"✅ BELI{label_sim} — {sim} | Skor {skor}/{ambang} | RSI {rsi_val} | ATR {atr}")
                     self._catat_order(sim, "BELI", harga, res.order, skor)
                 else:
                     log.append(f"❌ BELI ditolak {sim} — retcode: {res.retcode if res else 'None'}")
@@ -226,7 +252,7 @@ class ArgenBotPro:
             elif skor <= -ambang:
                 res = self.kirim_order(sim, 1, info, self.sl_pips, self.tp_pips)
                 if res and res.retcode == mt5.TRADE_RETCODE_DONE:
-                    log.append(f"✅ JUAL — {sim} | Skor {skor}/{-ambang} | RSI {rsi_val} | ATR {atr}")
+                    log.append(f"✅ JUAL{label_sim} — {sim} | Skor {skor}/{-ambang} | RSI {rsi_val} | ATR {atr}")
                     self._catat_order(sim, "JUAL", harga, res.order, skor)
                 else:
                     log.append(f"❌ JUAL ditolak {sim} — retcode: {res.retcode if res else 'None'}")
@@ -235,7 +261,7 @@ class ArgenBotPro:
                 arah_ema = "↑" if harga > ema_val else "↓"
                 log.append(
                     f"📡 {sim} | Skor {skor:+d} (±{ambang}) | RSI {rsi_val} | "
-                    f"ATR {atr} | EMA {arah_ema} | {pola}"
+                    f"ATR {atr} | EMA {arah_ema} | {pola}{label_sim}"
                 )
 
         return log
@@ -282,13 +308,14 @@ class ArgenBotPro:
                 csv.writer(f).writerow([
                     "timestamp_utc", "simbol", "arah",
                     "harga_masuk", "tiket", "skor",
-                    "lot", "sl_pts", "tp_pts",
+                    "lot", "sl_pts", "tp_pts", "mode",
                 ])
 
     def _catat_order(self, simbol, arah, harga, tiket, skor):
-        ts = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        ts   = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        mode = "SIMULASI" if MODE_SIMULASI else "NYATA"
         with open(FILE_LOG, "a", newline="", encoding="utf-8") as f:
             csv.writer(f).writerow([
                 ts, simbol, arah, harga, tiket, skor,
-                self.lot, self.sl_pips, self.tp_pips,
+                self.lot, self.sl_pips, self.tp_pips, mode,
             ])

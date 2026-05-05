@@ -2,14 +2,15 @@
 ArgenFlow V5 Pro — Server Web (FastAPI)
 =======================================
 Exness + MetaTrader 5
+Kompatibel: Windows (MT5 nyata) | Linux / Termux (Simulasi)
 
 Perubahan dari V4:
-  - API /api/status kini mengembalikan: status AIManager, mode demo,
-    berita berdampak tinggi berikutnya, dan ekuitas akun
-  - Rute /api/toggle_sniper dihapus (Mode Sniper dipisah di masa depan)
-  - Interval pemindaian dapat diatur: 15 detik pada mode normal
-  - Log dibatasi 20 pesan (sebelumnya 15)
+  - API /api/status mengembalikan status AIManager, mode demo,
+    berita berdampak tinggi berikutnya, ekuitas akun, dan mode platform
+  - Interval pemindaian: 15 detik (mode normal)
+  - Log dibatasi 20 pesan
   - Mode DEMO terdeteksi otomatis dari .env
+  - Mode Simulasi aktif otomatis di Linux/Termux
 """
 
 from fastapi import FastAPI
@@ -19,26 +20,38 @@ import uvicorn
 import os
 import asyncio
 
+# ── Deteksi platform ──────────────────────────────────────
 try:
     import MetaTrader5 as mt5
     MT5_TERSEDIA = True
+    MODE_SIMULASI = False
 except ImportError:
-    mt5 = None
-    MT5_TERSEDIA = False
+    try:
+        import mt5_sim as mt5
+        MT5_TERSEDIA = True
+        MODE_SIMULASI = True
+    except ImportError:
+        mt5 = None
+        MT5_TERSEDIA = False
+        MODE_SIMULASI = True
 
+# ── Inisialisasi bot ──────────────────────────────────────
 try:
-    from bot_engine import ArgenBotPro
+    from bot_engine import ArgenBotPro, MODE_SIMULASI as SIM_BOT
     bot = ArgenBotPro()
     BOT_TERSEDIA = True
-except Exception:
+    MODE_SIMULASI = SIM_BOT
+except Exception as e:
     bot = None
     BOT_TERSEDIA = False
+    print(f"[PERINGATAN] Gagal memuat bot: {e}")
 
 app = FastAPI(title="ArgenFlow V5", version="5.0")
 pesan_ui: list[str] = []
 
-MODE_DEMO = os.getenv("MT5_DEMO", "true").lower() == "true"
-INTERVAL_SCAN = 15.0   # detik antar pemindaian pada mode normal
+MODE_DEMO    = os.getenv("MT5_DEMO", "true").lower() == "true"
+PORT         = int(os.getenv("PORT", "5000"))
+INTERVAL_SCAN = 15.0
 
 
 # ══════════════════════════════════════════════════════════
@@ -53,7 +66,8 @@ async def loop_mt5():
                 if log:
                     pesan_ui.extend(log)
                 else:
-                    pesan_ui.append("📡 Radar aktif — tidak ada sinyal pada siklus ini")
+                    label = " [SIM]" if MODE_SIMULASI else ""
+                    pesan_ui.append(f"📡 Radar aktif — tidak ada sinyal{label}")
             except Exception as e:
                 pesan_ui.append(f"❌ Error tidak terduga: {str(e)}")
 
@@ -69,7 +83,7 @@ async def event_startup():
 
 
 # ══════════════════════════════════════════════════════════
-#  FILE STATIS (dasbor HTML)
+#  FILE STATIS
 # ══════════════════════════════════════════════════════════
 
 if os.path.exists("static"):
@@ -92,22 +106,26 @@ async def status():
     log_dikirim = list(pesan_ui)
     pesan_ui = []
 
-    saldo    = 0.0
-    ekuitas  = 0.0
+    saldo     = 0.0
+    ekuitas   = 0.0
     mata_uang = "USD"
-    login_id = 0
-    server   = ""
+    login_id  = 0
+    server    = ""
 
-    if MT5_TERSEDIA and mt5.terminal_info():
-        info = mt5.account_info()
-        if info:
-            saldo     = round(info.balance, 2)
-            ekuitas   = round(info.equity, 2)
-            mata_uang = info.currency
-            login_id  = info.login
-            server    = info.server
+    if MT5_TERSEDIA:
+        try:
+            if mt5.terminal_info():
+                info = mt5.account_info()
+                if info:
+                    saldo     = round(info.balance, 2)
+                    ekuitas   = round(info.equity, 2)
+                    mata_uang = info.currency
+                    login_id  = info.login
+                    server    = info.server
+        except Exception:
+            pass
 
-    status_ai = "TIDAK_TERSEDIA"
+    status_ai = "MENGINISIALISASI"
     berita_berikutnya = None
 
     if BOT_TERSEDIA and bot is not None:
@@ -115,17 +133,18 @@ async def status():
         berita_berikutnya = bot.ai.get_proxima_noticia()
 
     return {
-        "active":          BOT_TERSEDIA and bot.is_running,
-        "demo":            MODE_DEMO,
-        "balance":         saldo,
-        "equity":          ekuitas,
-        "currency":        mata_uang,
-        "login":           login_id,
-        "server":          server,
-        "ai_estado":       status_ai,
-        "proxima_noticia": berita_berikutnya,
-        "new_logs":        log_dikirim,
-        "mt5_available":   MT5_TERSEDIA,
+        "active":           BOT_TERSEDIA and bot.is_running,
+        "demo":             MODE_DEMO,
+        "simulasi":         MODE_SIMULASI,
+        "balance":          saldo,
+        "equity":           ekuitas,
+        "currency":         mata_uang,
+        "login":            login_id,
+        "server":           server,
+        "ai_estado":        status_ai,
+        "proxima_noticia":  berita_berikutnya,
+        "new_logs":         log_dikirim,
+        "mt5_available":    MT5_TERSEDIA,
     }
 
 
@@ -136,7 +155,7 @@ async def status():
 @app.get("/api/toggle")
 async def toggle(active: bool):
     if not BOT_TERSEDIA:
-        return {"status": "error", "message": "MetaTrader5 tidak tersedia di lingkungan ini (memerlukan Windows + MT5 Terminal)"}
+        return {"status": "error", "message": "Mesin bot tidak tersedia"}
     bot.is_running = active
     if active:
         ok, pesan = bot.conectar()
@@ -144,7 +163,8 @@ async def toggle(active: bool):
             bot.is_running = False
             return {"status": "error", "message": pesan}
         tipe = "DEMO" if MODE_DEMO else "REAL"
-        pesan_ui.append(f"🟢 Bot dimulai — Akun {tipe} di Exness")
+        label = " (SIMULASI)" if MODE_SIMULASI else ""
+        pesan_ui.append(f"🟢 Bot dimulai — Akun {tipe}{label} di Exness")
     else:
         pesan_ui.append("🔴 Bot dihentikan secara manual")
     return {"status": "ok", "bot_active": bot.is_running}
@@ -178,10 +198,17 @@ async def ambil_berita():
 # ══════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
+    import platform
+    sistem = platform.system()
     print("=" * 55)
     print("  ArgenFlow V5 Pro — Exness + MT5")
+    print(f"  Platform : {sistem}")
     mode = "DEMO" if MODE_DEMO else "⚠️  AKUN REAL"
-    print(f"  Mode: {mode}")
-    print("  Dasbor: http://0.0.0.0:5000")
+    print(f"  Mode     : {mode}")
+    if MODE_SIMULASI:
+        print("  Koneksi  : SIMULASI (Linux/Termux — tanpa MT5 nyata)")
+    else:
+        print("  Koneksi  : MT5 NYATA (Windows)")
+    print(f"  Dasbor   : http://0.0.0.0:{PORT}")
     print("=" * 55)
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
