@@ -37,3 +37,27 @@ externalPort = 80
 [deployment]
 deploymentTarget = "autoscale"
 run = ["gunicorn", "--bind=0.0.0.0:5000", "--reuse-port", "--workers=2", "main:app"]
+
+[userenv]
+
+[userenv.shared]
+MT5_DEMO = "true"
+PORT = "5000"
+RISIKO_PCT = "1.0"
+MAX_RUGI_HARIAN = "3.0"
+MIN_LOT = "0.01"
+MAX_LOT = "0.10"
+MAX_SPREAD = "30"
+TRAILING_AKTIF = "true"
+TRAILING_BE_PCT = "50"
+TRAILING_KUNCI_PCT = "75"
+SL_ATR_MULT = "1.5"
+TP_ATR_MULT = "3.0"
+PERIODE_RSI = "14"
+PERIODE_EMA = "50"
+PERIODE_ATR = "14"
+AMBANG_SKOR = "80"
+RSI_BELI_MAX = "32"
+RSI_JUAL_MIN = "68"
+JAM_MULAI_SESI = "8"
+JAM_AKHIR_SESI = "17"
