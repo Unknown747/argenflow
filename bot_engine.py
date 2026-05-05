@@ -15,7 +15,13 @@ Correcciones vs V4:
   [9] Manejo de error explícito con retcode en cada orden
 """
 
-import MetaTrader5 as mt5
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    mt5 = None
+    MT5_AVAILABLE = False
+
 import os
 import csv
 import datetime

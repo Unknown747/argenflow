@@ -15,14 +15,26 @@ Novedades vs V4:
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from bot_engine import ArgenBotPro
 import uvicorn
-import MetaTrader5 as mt5
 import os
 import asyncio
 
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    mt5 = None
+    MT5_AVAILABLE = False
+
+try:
+    from bot_engine import ArgenBotPro
+    bot = ArgenBotPro()
+    BOT_AVAILABLE = True
+except Exception:
+    bot = None
+    BOT_AVAILABLE = False
+
 app = FastAPI(title="ArgenFlow V5", version="5.0")
-bot = ArgenBotPro()
 mensajes_ui: list[str] = []
 
 MODO_DEMO = os.getenv("MT5_DEMO", "true").lower() == "true"
@@ -35,7 +47,7 @@ INTERVALO_SCAN = 15.0   # segundos entre escaneos en modo normal
 
 async def ciclo_mt5_loop():
     while True:
-        if bot.is_running:
+        if BOT_AVAILABLE and bot.is_running:
             try:
                 logs = bot.escanear()
                 if logs:
@@ -45,7 +57,6 @@ async def ciclo_mt5_loop():
             except Exception as e:
                 mensajes_ui.append(f"❌ Error inesperado: {str(e)}")
 
-            # Mantener solo los últimos 20 mensajes
             if len(mensajes_ui) > 20:
                 del mensajes_ui[:-20]
 
@@ -76,11 +87,6 @@ async def read_index():
 
 @app.get("/api/status")
 async def status():
-    """
-    Retorna el estado completo del bot para el dashboard.
-    Incluye: balance, equity, modo demo, estado AIManager,
-    próxima noticia y logs nuevos.
-    """
     global mensajes_ui
 
     logs_to_send = list(mensajes_ui)
@@ -92,7 +98,7 @@ async def status():
     login_id = 0
     server   = ""
 
-    if mt5.terminal_info():
+    if MT5_AVAILABLE and mt5.terminal_info():
         info = mt5.account_info()
         if info:
             balance  = round(info.balance, 2)
@@ -101,12 +107,15 @@ async def status():
             login_id = info.login
             server   = info.server
 
-    # Estado del AIManager
-    ai_estado = bot.ai.get_estado()
-    proxima_noticia = bot.ai.get_proxima_noticia()
+    ai_estado = "NO_DISPONIBLE"
+    proxima_noticia = None
+
+    if BOT_AVAILABLE and bot is not None:
+        ai_estado = bot.ai.get_estado()
+        proxima_noticia = bot.ai.get_proxima_noticia()
 
     return {
-        "active":          bot.is_running,
+        "active":          BOT_AVAILABLE and bot.is_running,
         "demo":            MODO_DEMO,
         "balance":         balance,
         "equity":          equity,
@@ -114,8 +123,9 @@ async def status():
         "login":           login_id,
         "server":          server,
         "ai_estado":       ai_estado,
-        "proxima_noticia": proxima_noticia,   # None o {"descripcion", "hora_utc", "en_minutos"}
+        "proxima_noticia": proxima_noticia,
         "new_logs":        logs_to_send,
+        "mt5_available":   MT5_AVAILABLE,
     }
 
 
@@ -125,7 +135,8 @@ async def status():
 
 @app.get("/api/toggle")
 async def toggle(active: bool):
-    """Enciende o apaga el bot. Al encender, conecta con Exness."""
+    if not BOT_AVAILABLE:
+        return {"status": "error", "message": "MetaTrader5 no disponible en este entorno (requiere Windows + MT5 Terminal)"}
     bot.is_running = active
     if active:
         ok, msg = bot.conectar()
@@ -141,7 +152,6 @@ async def toggle(active: bool):
 
 @app.get("/api/noticias")
 async def get_noticias():
-    """Retorna el calendario de noticias de las próximas 24 horas."""
     import datetime
     from ai_manager import NOTICIAS_ALTO_IMPACTO
     ahora = datetime.datetime.utcnow()
@@ -172,6 +182,6 @@ if __name__ == "__main__":
     print("  ArgenFlow V5 Pro — Exness + MT5")
     modo = "DEMO" if MODO_DEMO else "⚠️  CUENTA REAL"
     print(f"  Modo: {modo}")
-    print("  Dashboard: http://127.0.0.1:8000")
+    print("  Dashboard: http://0.0.0.0:5000")
     print("=" * 55)
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=5000)
