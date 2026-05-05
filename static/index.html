@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="id">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ArgenFlow V5 — Dashboard</title>
+<title>ArgenFlow V5 — Dasbor</title>
 <style>
   :root {
     --bg:       #0f1117;
@@ -64,7 +64,7 @@
     gap: 16px;
   }
 
-  /* ── Cards ───────────────────────────────── */
+  /* ── Kartu ───────────────────────────────── */
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -87,7 +87,7 @@
   }
   .card-sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
 
-  /* ── Botón principal ─────────────────────── */
+  /* ── Tombol utama ─────────────────────────── */
   #btn-toggle {
     width: 100%;
     padding: 14px;
@@ -110,7 +110,7 @@
   #btn-toggle:hover { opacity: .88; transform: translateY(-1px); }
   #btn-toggle:active { transform: translateY(0); }
 
-  /* ── Indicador de estado ─────────────────── */
+  /* ── Indikator status ─────────────────────── */
   .status-dot {
     display: inline-block;
     width: 10px; height: 10px;
@@ -122,7 +122,7 @@
   .dot-off { background: var(--muted); }
   .dot-warn { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
 
-  /* ── Pares monitoreados ───────────────────── */
+  /* ── Pasangan yang dipantau ───────────────── */
   .pares-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -165,7 +165,7 @@
   .log-radar  { color: var(--muted); }
   .log-time   { color: #374151; margin-right: 6px; }
 
-  /* ── Sección noticias ────────────────────── */
+  /* ── Bagian berita ────────────────────────── */
   .noticia-item {
     display: flex;
     justify-content: space-between;
@@ -188,7 +188,7 @@
   }
   .sin-noticias { color: var(--muted); font-size: 13px; padding: 8px 0; }
 
-  /* ── AI Manager badge inline ─────────────── */
+  /* ── Badge AI Manager ─────────────────────── */
   .ai-row {
     display: flex;
     align-items: center;
@@ -210,36 +210,36 @@
 
 <main>
 
-  <!-- Balance -->
+  <!-- Saldo -->
   <div class="card">
-    <div class="card-label">Balance</div>
+    <div class="card-label">Saldo</div>
     <div class="card-value" id="balance">—</div>
-    <div class="card-sub" id="equity-row">Equity: —</div>
+    <div class="card-sub" id="equity-row">Ekuitas: —</div>
   </div>
 
-  <!-- Estado del bot -->
+  <!-- Status Bot -->
   <div class="card">
-    <div class="card-label">Estado del Bot</div>
+    <div class="card-label">Status Bot</div>
     <div style="margin-top:4px;">
       <span class="status-dot dot-off" id="status-dot"></span>
-      <span id="status-text" style="font-size:15px; font-weight:600;">Inactivo</span>
+      <span id="status-text" style="font-size:15px; font-weight:600;">Tidak Aktif</span>
     </div>
     <div class="card-sub" id="login-row">Login: —</div>
   </div>
 
-  <!-- Control -->
+  <!-- Kontrol -->
   <div class="card" style="display:flex; flex-direction:column; justify-content:center;">
     <button id="btn-toggle" class="off" onclick="toggleBot()">
-      ▶ INICIAR BOT
+      ▶ JALANKAN BOT
     </button>
     <div style="margin-top:10px; font-size:11px; color:var(--muted); text-align:center;" id="demo-aviso">
-      Modo DEMO activo — sin riesgo real
+      Mode DEMO aktif — tanpa risiko nyata
     </div>
   </div>
 
-  <!-- Pares monitoreados -->
+  <!-- Pasangan yang dipantau -->
   <div class="card card-half">
-    <div class="card-label">Pares Monitoreados</div>
+    <div class="card-label">Pasangan yang Dipantau</div>
     <div class="pares-grid" id="pares-grid">
       <div class="par-item"><span class="par-name">EURUSDm</span><span class="par-ok">●</span></div>
       <div class="par-item"><span class="par-name">GBPUSDm</span><span class="par-ok">●</span></div>
@@ -248,14 +248,14 @@
     </div>
   </div>
 
-  <!-- Próxima noticia -->
+  <!-- Berita berikutnya -->
   <div class="card">
-    <div class="card-label">⚡ Próxima Noticia Alto Impacto</div>
+    <div class="card-label">⚡ Berita Berdampak Tinggi Berikutnya</div>
     <div id="proxima-noticia-box" style="margin-top:8px;">
-      <span class="sin-noticias">Cargando...</span>
+      <span class="sin-noticias">Memuat...</span>
     </div>
     <div style="margin-top:12px;">
-      <div class="card-label" style="margin-bottom:6px;">Calendario próx. 24h</div>
+      <div class="card-label" style="margin-bottom:6px;">Kalender 24 jam ke depan</div>
       <div id="noticias-lista">
         <span class="sin-noticias">—</span>
       </div>
@@ -265,133 +265,131 @@
   <!-- Log -->
   <div class="card card-full">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-      <div class="card-label" style="margin-bottom:0;">Log en Tiempo Real</div>
+      <div class="card-label" style="margin-bottom:0;">Log Waktu Nyata</div>
       <button onclick="clearLog()"
         style="background:none; border:1px solid var(--border); color:var(--muted);
                padding:4px 10px; border-radius:6px; cursor:pointer; font-size:11px;">
-        Limpiar
+        Bersihkan
       </button>
     </div>
     <div id="log-box">
-      <div class="log-line log-radar">Esperando que el bot inicie...</div>
+      <div class="log-line log-radar">Menunggu bot dimulai...</div>
     </div>
   </div>
 
 </main>
 
 <script>
-  let botActivo = false;
-  let esDemo    = true;
+  let botAktif = false;
+  let modeDemo = true;
 
-  // ── Polling principal ──────────────────────────────────
-  async function fetchStatus() {
+  // ── Polling utama ──────────────────────────────────────
+  async function ambilStatus() {
     try {
       const r    = await fetch('/api/status');
       const data = await r.json();
 
-      botActivo = data.active;
-      esDemo    = data.demo;
+      botAktif = data.active;
+      modeDemo = data.demo;
 
       // Badge DEMO / REAL
-      const badgeCuenta = document.getElementById('badge-cuenta');
-      badgeCuenta.textContent = esDemo ? 'DEMO' : 'REAL';
-      badgeCuenta.className   = esDemo ? 'badge badge-demo' : 'badge badge-real';
+      const badgeAkun = document.getElementById('badge-cuenta');
+      badgeAkun.textContent = modeDemo ? 'DEMO' : 'REAL';
+      badgeAkun.className   = modeDemo ? 'badge badge-demo' : 'badge badge-real';
 
-      // Balance y equity
-      const cur = data.currency || 'USD';
+      // Saldo dan ekuitas
+      const mata = data.currency || 'USD';
       document.getElementById('balance').textContent =
-        data.balance.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + cur;
+        data.balance.toLocaleString('id-ID', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + mata;
       document.getElementById('equity-row').textContent =
-        'Equity: ' + data.equity.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + cur;
+        'Ekuitas: ' + data.equity.toLocaleString('id-ID', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + mata;
 
-      // Servidor y login
+      // Server dan login
       document.getElementById('header-server').textContent = data.server || '—';
       document.getElementById('login-row').textContent = 'Login: ' + (data.login || '—');
 
-      // Estado del bot
+      // Status bot
       const dot  = document.getElementById('status-dot');
       const txt  = document.getElementById('status-text');
       const btn  = document.getElementById('btn-toggle');
       if (data.active) {
-        dot.className  = 'status-dot dot-on';
-        txt.textContent = 'Activo — Escaneando';
-        btn.textContent = '⏹ DETENER BOT';
+        dot.className   = 'status-dot dot-on';
+        txt.textContent = 'Aktif — Memindai';
+        btn.textContent = '⏹ HENTIKAN BOT';
         btn.className   = 'on';
       } else {
-        dot.className  = 'status-dot dot-off';
-        txt.textContent = 'Inactivo';
-        btn.textContent = '▶ INICIAR BOT';
+        dot.className   = 'status-dot dot-off';
+        txt.textContent = 'Tidak Aktif';
+        btn.textContent = '▶ JALANKAN BOT';
         btn.className   = 'off';
       }
 
       // Badge AIManager
       const badgeAI = document.getElementById('badge-ai');
-      const aiEst   = data.ai_estado || '—';
-      badgeAI.textContent = 'AI: ' + aiEst;
-      if (aiEst === 'PAUSA_NOTICIA') {
+      const statusAI = data.ai_estado || '—';
+      badgeAI.textContent = 'AI: ' + statusAI;
+      if (statusAI === 'PAUSA_NOTICIA') {
         badgeAI.className = 'badge badge-pausa';
-      } else if (aiEst === 'VOLÁTIL') {
+      } else if (statusAI === 'VOLÁTIL') {
         badgeAI.className = 'badge badge-volat';
       } else {
         badgeAI.className = 'badge badge-ai';
       }
 
-      // Próxima noticia
-      const pn = data.proxima_noticia;
-      const pnBox = document.getElementById('proxima-noticia-box');
-      if (pn) {
-        pnBox.innerHTML = `
-          <div style="color:var(--yellow); font-weight:700; font-size:14px;">${pn.descripcion}</div>
+      // Berita berikutnya
+      const bn = data.proxima_noticia;
+      const bnBox = document.getElementById('proxima-noticia-box');
+      if (bn) {
+        bnBox.innerHTML = `
+          <div style="color:var(--yellow); font-weight:700; font-size:14px;">${bn.descripcion}</div>
           <div style="color:var(--muted); font-size:12px; margin-top:4px;">
-            ${pn.hora_utc} · en ${pn.en_minutos} minutos
+            ${bn.hora_utc} · dalam ${bn.en_minutos} menit
           </div>`;
       } else {
-        pnBox.innerHTML = '<span class="sin-noticias">Sin noticias en las próximas horas</span>';
+        bnBox.innerHTML = '<span class="sin-noticias">Tidak ada berita dalam beberapa jam ke depan</span>';
       }
 
-      // Aviso demo
+      // Peringatan demo
       document.getElementById('demo-aviso').textContent =
-        esDemo ? 'Modo DEMO activo — sin riesgo real' : '⚠️ Cuenta REAL — operando con dinero real';
+        modeDemo ? 'Mode DEMO aktif — tanpa risiko nyata' : '⚠️ Akun REAL — trading dengan uang nyata';
 
-      // Logs
+      // Log
       if (data.new_logs && data.new_logs.length > 0) {
-        appendLogs(data.new_logs);
+        tambahLog(data.new_logs);
       }
 
     } catch (e) {
-      appendLogs(['❌ Sin conexión con el servidor']);
+      tambahLog(['❌ Tidak dapat terhubung ke server']);
     }
   }
 
-  // ── Logs ──────────────────────────────────────────────
-  function appendLogs(lines) {
+  // ── Log ────────────────────────────────────────────────
+  function tambahLog(baris) {
     const box = document.getElementById('log-box');
-    const ahora = new Date().toLocaleTimeString('es-AR', {hour12:false});
-    lines.forEach(line => {
+    const sekarang = new Date().toLocaleTimeString('id-ID', {hour12:false});
+    baris.forEach(b => {
       const div = document.createElement('div');
-      div.className = 'log-line ' + getLogClass(line);
-      div.innerHTML = `<span class="log-time">${ahora}</span>${escapeHtml(line)}`;
+      div.className = 'log-line ' + kelasLog(b);
+      div.innerHTML = `<span class="log-time">${sekarang}</span>${escapHtml(b)}`;
       box.appendChild(div);
     });
-    // Mantener scroll al fondo
     box.scrollTop = box.scrollHeight;
-    // Limitar a 100 líneas en el DOM
     while (box.children.length > 100) {
       box.removeChild(box.firstChild);
     }
   }
 
-  function getLogClass(line) {
-    if (line.startsWith('✅')) return 'log-ok';
-    if (line.startsWith('❌')) return 'log-err';
-    if (line.startsWith('⚠️') || line.startsWith('🛑')) return 'log-warn';
-    if (line.startsWith('📡') || line.startsWith('😴') || line.startsWith('📉')) return 'log-radar';
-    if (line.startsWith('⏰') || line.startsWith('⚡')) return 'log-info';
+  function kelasLog(baris) {
+    if (baris.startsWith('✅')) return 'log-ok';
+    if (baris.startsWith('❌')) return 'log-err';
+    if (baris.startsWith('⚠️') || baris.startsWith('🛑')) return 'log-warn';
+    if (baris.startsWith('📡') || baris.startsWith('😴') || baris.startsWith('📉')) return 'log-radar';
+    if (baris.startsWith('⏰') || baris.startsWith('⚡')) return 'log-info';
     return 'log-info';
   }
 
-  function escapeHtml(text) {
-    return text
+  function escapHtml(teks) {
+    return teks
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
@@ -399,52 +397,52 @@
 
   function clearLog() {
     document.getElementById('log-box').innerHTML =
-      '<div class="log-line log-radar">Log limpiado</div>';
+      '<div class="log-line log-radar">Log dibersihkan</div>';
   }
 
-  // ── Toggle Bot ────────────────────────────────────────
+  // ── Toggle Bot ─────────────────────────────────────────
   async function toggleBot() {
     const btn = document.getElementById('btn-toggle');
     btn.disabled = true;
     try {
-      const nuevo = !botActivo;
-      const r    = await fetch(`/api/toggle?active=${nuevo}`);
+      const statusBaru = !botAktif;
+      const r    = await fetch(`/api/toggle?active=${statusBaru}`);
       const data = await r.json();
       if (data.status === 'error') {
-        appendLogs(['❌ ' + data.message]);
+        tambahLog(['❌ ' + data.message]);
       }
-      await fetchStatus();
+      await ambilStatus();
     } finally {
       btn.disabled = false;
     }
   }
 
-  // ── Calendario de noticias ─────────────────────────────
-  async function fetchNoticias() {
+  // ── Kalender berita ────────────────────────────────────
+  async function ambilBerita() {
     try {
       const r    = await fetch('/api/noticias');
       const data = await r.json();
-      const lista = document.getElementById('noticias-lista');
+      const daftar = document.getElementById('noticias-lista');
       if (!data.noticias || data.noticias.length === 0) {
-        lista.innerHTML = '<span class="sin-noticias">Sin eventos en las próximas 24h ✅</span>';
+        daftar.innerHTML = '<span class="sin-noticias">Tidak ada acara dalam 24 jam ke depan ✅</span>';
         return;
       }
-      lista.innerHTML = data.noticias.map(n => `
+      daftar.innerHTML = data.noticias.map(n => `
         <div class="noticia-item">
-          <span class="noticia-desc">${escapeHtml(n.descripcion)}</span>
+          <span class="noticia-desc">${escapHtml(n.descripcion)}</span>
           <span>
             <span class="noticia-hora">${n.hora_utc}</span>
-            <span class="noticia-tiempo">en ${n.en_minutos}m</span>
+            <span class="noticia-tiempo">dalam ${n.en_minutos}m</span>
           </span>
         </div>`).join('');
-    } catch(e) { /* silencioso */ }
+    } catch(e) { /* diabaikan */ }
   }
 
-  // ── Inicialización ────────────────────────────────────
-  fetchStatus();
-  fetchNoticias();
-  setInterval(fetchStatus,   5000);   // actualiza cada 5s
-  setInterval(fetchNoticias, 60000);  // noticias cada 1 min
+  // ── Inisialisasi ───────────────────────────────────────
+  ambilStatus();
+  ambilBerita();
+  setInterval(ambilStatus,  5000);    // perbarui setiap 5 detik
+  setInterval(ambilBerita, 60000);    // berita setiap 1 menit
 </script>
 </body>
 </html>

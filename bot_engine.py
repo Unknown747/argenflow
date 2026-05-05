@@ -1,26 +1,26 @@
 """
-ArgenFlow V5 Pro — Motor de Trading (Modo Normal)
-==================================================
-Exness + MetaTrader 5 | Micro-cuentas
+ArgenFlow V5 Pro — Mesin Trading (Mode Normal)
+===============================================
+Exness + MetaTrader 5 | Akun Mikro
 
-Correcciones vs V4:
-  [1] RSI de Wilder real (suavizado exponencial, no SMA)
-  [2] Auto-detección del filling mode por símbolo (Exness-safe)
-  [3] Filtro de sesión London/NY: 08:00–17:00 UTC
-  [4] Filtro ATR: evita mercados dormidos y eventos extremos
-  [5] EMA calculada en M15 (mismo TF que el RSI, no H1)
-  [6] Umbral de score: 70 en vez de 90 (más señales reales)
-  [7] Log CSV automático de cada orden con timestamp UTC
-  [8] Integración con ai_manager: pausa por noticias + evaluación
-  [9] Manejo de error explícito con retcode en cada orden
+Perbaikan dari V4:
+  [1] RSI Wilder asli (pemulusan eksponensial, bukan SMA)
+  [2] Deteksi otomatis filling mode per simbol (aman untuk Exness)
+  [3] Filter sesi London/NY: 08:00–17:00 UTC
+  [4] Filter ATR: menghindari pasar tidur dan kejadian ekstrem
+  [5] EMA dihitung pada M15 (TF sama dengan RSI, bukan H1)
+  [6] Ambang batas skor: 70 bukan 90 (lebih banyak sinyal nyata)
+  [7] Log CSV otomatis setiap order dengan timestamp UTC
+  [8] Integrasi ai_manager: jeda berita + evaluasi pasar
+  [9] Penanganan error eksplisit dengan retcode pada setiap order
 """
 
 try:
     import MetaTrader5 as mt5
-    MT5_AVAILABLE = True
+    MT5_TERSEDIA = True
 except ImportError:
     mt5 = None
-    MT5_AVAILABLE = False
+    MT5_TERSEDIA = False
 
 import os
 import csv
@@ -30,9 +30,9 @@ from ai_manager import AIManager
 
 load_dotenv()
 
-SESSION_START_H = 8    # 08:00 UTC — apertura Londres
-SESSION_END_H   = 17   # 17:00 UTC — cierre sesión NY
-LOG_FILE        = "operaciones.csv"
+JAM_MULAI_SESI = 8    # 08:00 UTC — pembukaan London
+JAM_AKHIR_SESI = 17   # 17:00 UTC — penutupan sesi NY
+FILE_LOG        = "operasi.csv"
 
 
 class ArgenBotPro:
@@ -42,109 +42,109 @@ class ArgenBotPro:
         self.password = os.getenv("MT5_PASS", "")
         self.server   = os.getenv("MT5_SERVER", "")
 
-        self.is_running  = False
-        self.modo_sniper = False
+        self.is_running   = False
+        self.mode_sniper  = False
 
-        self.symbol_list  = ["EURUSDm", "GBPUSDm", "USDJPYm", "XAUUSDm"]
-        self.magic_number = 20260422
+        self.daftar_simbol = ["EURUSDm", "GBPUSDm", "USDJPYm", "XAUUSDm"]
+        self.magic_number  = 20260422
 
-        self.lot        = 0.01
-        self.sl_pips    = 100
-        self.tp_pips    = 250
-        self.max_spread = 30
+        self.lot           = 0.01
+        self.sl_pips       = 100
+        self.tp_pips       = 250
+        self.max_spread    = 30
 
-        self.rsi_period   = 14
-        self.ema_period   = 50
-        self.atr_period   = 14
-        self.score_umbral = 70
+        self.periode_rsi   = 14
+        self.periode_ema   = 50
+        self.periode_atr   = 14
+        self.ambang_skor   = 70
 
         self.ai = AIManager()
-        self._inicializar_log()
+        self._inisialisasi_log()
 
-    # ── Conexión ──────────────────────────────────────────────
+    # ── Koneksi ───────────────────────────────────────────────
 
     def conectar(self):
         if not mt5.initialize():
-            return False, f"Error al iniciar MT5: {mt5.last_error()}"
+            return False, f"Gagal memulai MT5: {mt5.last_error()}"
         auth = mt5.login(self.login, self.password, self.server)
         if not auth:
-            return False, f"Error de login en Exness: {mt5.last_error()}"
-        return True, "Conectado a Exness correctamente"
+            return False, f"Gagal login ke Exness: {mt5.last_error()}"
+        return True, "Berhasil terhubung ke Exness"
 
-    # ── Filtro sesión ─────────────────────────────────────────
+    # ── Filter sesi ───────────────────────────────────────────
 
-    def _en_sesion_activa(self):
-        ahora = datetime.datetime.utcnow()
-        if ahora.weekday() >= 5:
+    def _dalam_sesi_aktif(self):
+        sekarang = datetime.datetime.utcnow()
+        if sekarang.weekday() >= 5:
             return False
-        return SESSION_START_H <= ahora.hour < SESSION_END_H
+        return JAM_MULAI_SESI <= sekarang.hour < JAM_AKHIR_SESI
 
-    # ── Indicadores ───────────────────────────────────────────
+    # ── Indikator ─────────────────────────────────────────────
 
-    def _obtener_ema(self, symbol, timeframe, period):
-        rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, period + 50)
-        if rates is None or len(rates) < period + 1:
+    def _hitung_ema(self, simbol, timeframe, periode):
+        rates = mt5.copy_rates_from_pos(simbol, timeframe, 0, periode + 50)
+        if rates is None or len(rates) < periode + 1:
             return None
-        closes = [r["close"] for r in rates]
-        k = 2.0 / (period + 1)
-        ema = sum(closes[:period]) / period
-        for price in closes[period:]:
-            ema = price * k + ema * (1 - k)
+        tutup = [r["close"] for r in rates]
+        k = 2.0 / (periode + 1)
+        ema = sum(tutup[:periode]) / periode
+        for harga in tutup[periode:]:
+            ema = harga * k + ema * (1 - k)
         return ema
 
-    def _obtener_rsi_wilder(self, symbol, timeframe, period=14):
-        """RSI real de Wilder (factor 1/period, no 2/(period+1))."""
-        rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, period * 3 + 1)
-        if rates is None or len(rates) < period + 2:
+    def _hitung_rsi_wilder(self, simbol, timeframe, periode=14):
+        """RSI Wilder asli (faktor 1/periode, bukan 2/(periode+1))."""
+        rates = mt5.copy_rates_from_pos(simbol, timeframe, 0, periode * 3 + 1)
+        if rates is None or len(rates) < periode + 2:
             return 50.0
-        closes = [r["close"] for r in rates]
-        deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
-        gains  = [max(d, 0.0) for d in deltas]
-        losses = [max(-d, 0.0) for d in deltas]
-        avg_gain = sum(gains[:period]) / period
-        avg_loss = sum(losses[:period]) / period
-        for i in range(period, len(gains)):
-            avg_gain = (avg_gain * (period - 1) + gains[i]) / period
-            avg_loss = (avg_loss * (period - 1) + losses[i]) / period
-        if avg_loss == 0:
+        tutup  = [r["close"] for r in rates]
+        delta  = [tutup[i] - tutup[i - 1] for i in range(1, len(tutup))]
+        naik   = [max(d, 0.0) for d in delta]
+        turun  = [max(-d, 0.0) for d in delta]
+        avg_naik  = sum(naik[:periode]) / periode
+        avg_turun = sum(turun[:periode]) / periode
+        for i in range(periode, len(naik)):
+            avg_naik  = (avg_naik  * (periode - 1) + naik[i])  / periode
+            avg_turun = (avg_turun * (periode - 1) + turun[i]) / periode
+        if avg_turun == 0:
             return 100.0
-        return round(100.0 - (100.0 / (1.0 + avg_gain / avg_loss)), 2)
+        return round(100.0 - (100.0 / (1.0 + avg_naik / avg_turun)), 2)
 
-    def _obtener_atr(self, symbol, timeframe, period=14):
-        rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, period + 2)
-        if rates is None or len(rates) < period + 1:
+    def _hitung_atr(self, simbol, timeframe, periode=14):
+        rates = mt5.copy_rates_from_pos(simbol, timeframe, 0, periode + 2)
+        if rates is None or len(rates) < periode + 1:
             return None
-        info = mt5.symbol_info(symbol)
+        info = mt5.symbol_info(simbol)
         if not info:
             return None
         trs = []
         for i in range(1, len(rates)):
-            h, l, pc = rates[i]["high"], rates[i]["low"], rates[i - 1]["close"]
-            trs.append(max(h - l, abs(h - pc), abs(l - pc)))
-        return round((sum(trs[-period:]) / period) / info.point, 1)
+            h, l, tc = rates[i]["high"], rates[i]["low"], rates[i - 1]["close"]
+            trs.append(max(h - l, abs(h - tc), abs(l - tc)))
+        return round((sum(trs[-periode:]) / periode) / info.point, 1)
 
-    def _detectar_engulfing(self, symbol, timeframe):
-        rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, 2)
+    def _deteksi_engulfing(self, simbol, timeframe):
+        rates = mt5.copy_rates_from_pos(simbol, timeframe, 0, 2)
         if rates is None or len(rates) < 2:
-            return "NADA"
+            return "TIDAK_ADA"
         v1, v2 = rates[0], rates[1]
         if (v1["close"] < v1["open"] and v2["close"] > v2["open"]
                 and v2["close"] > v1["open"] and v2["open"] < v1["close"]):
-            return "COMPRA"
+            return "BELI"
         if (v1["close"] > v1["open"] and v2["close"] < v2["open"]
                 and v2["close"] < v1["open"] and v2["open"] > v1["close"]):
-            return "VENTA"
-        return "NADA"
+            return "JUAL"
+        return "TIDAK_ADA"
 
-    # ── Filling mode Exness-safe ──────────────────────────────
+    # ── Filling mode aman untuk Exness ────────────────────────
 
-    def _get_filling_mode(self, symbol):
+    def _dapatkan_filling_mode(self, simbol):
         """
-        Lee los flags del símbolo en tiempo real para detectar
-        el modo de llenado soportado. Evita rechazos silenciosos
-        que ocurrían con IOC fijo en cuentas ECN de Exness.
+        Membaca flag simbol secara real-time untuk mendeteksi
+        mode pengisian yang didukung. Menghindari penolakan
+        yang terjadi dengan IOC tetap pada akun ECN Exness.
         """
-        info = mt5.symbol_info(symbol)
+        info = mt5.symbol_info(simbol)
         if info is None:
             return mt5.ORDER_FILLING_IOC
         flags = info.filling_mode
@@ -154,141 +154,141 @@ class ArgenBotPro:
             return mt5.ORDER_FILLING_IOC
         return mt5.ORDER_FILLING_RETURN
 
-    # ── Escaneo normal ────────────────────────────────────────
+    # ── Pemindaian normal ─────────────────────────────────────
 
     def escanear_normal(self):
-        logs = []
+        log = []
 
-        if not self._en_sesion_activa():
-            logs.append("⏰ Fuera de sesión London/NY — bot en espera")
-            return logs
+        if not self._dalam_sesi_aktif():
+            log.append("⏰ Di luar sesi London/NY — bot menunggu")
+            return log
 
-        ok, razon_ai = self.ai.ok_para_operar()
+        ok, alasan_ai = self.ai.ok_untuk_trading()
         if not ok:
-            logs.append(razon_ai)
-            return logs
+            log.append(alasan_ai)
+            return log
 
-        for sym in self.symbol_list:
-            if mt5.positions_get(symbol=sym):
+        for sim in self.daftar_simbol:
+            if mt5.positions_get(symbol=sim):
                 continue
 
-            info = mt5.symbol_info(sym)
+            info = mt5.symbol_info(sim)
             if not info:
                 continue
 
             if info.spread > self.max_spread:
-                logs.append(f"⚠️ {sym}: spread {info.spread}pts — omitido")
+                log.append(f"⚠️ {sim}: spread {info.spread}pts — dilewati")
                 continue
 
-            atr = self._obtener_atr(sym, mt5.TIMEFRAME_M15, self.atr_period)
+            atr = self._hitung_atr(sim, mt5.TIMEFRAME_M15, self.periode_atr)
             if atr is None or atr < 5 or atr > 500:
-                logs.append(f"📉 {sym}: ATR={atr} fuera de rango — omitido")
+                log.append(f"📉 {sim}: ATR={atr} di luar rentang — dilewati")
                 continue
 
-            ema_val = self._obtener_ema(sym, mt5.TIMEFRAME_M15, self.ema_period)
-            rsi_val = self._obtener_rsi_wilder(sym, mt5.TIMEFRAME_M15, self.rsi_period)
-            patron  = self._detectar_engulfing(sym, mt5.TIMEFRAME_M5)
-            tick    = mt5.symbol_info_tick(sym)
+            ema_val = self._hitung_ema(sim, mt5.TIMEFRAME_M15, self.periode_ema)
+            rsi_val = self._hitung_rsi_wilder(sim, mt5.TIMEFRAME_M15, self.periode_rsi)
+            pola    = self._deteksi_engulfing(sim, mt5.TIMEFRAME_M5)
+            tick    = mt5.symbol_info_tick(sim)
 
             if not tick or ema_val is None:
                 continue
-            precio = tick.last
+            harga = tick.last
 
-            # Ajuste de umbral según condición de mercado (AIManager)
-            umbral = self.score_umbral
-            rates_m15 = mt5.copy_rates_from_pos(sym, mt5.TIMEFRAME_M15, 0, 20)
+            # Penyesuaian ambang batas berdasarkan kondisi pasar (AIManager)
+            ambang = self.ambang_skor
+            rates_m15 = mt5.copy_rates_from_pos(sim, mt5.TIMEFRAME_M15, 0, 20)
             if rates_m15 is not None and len(rates_m15) >= 15:
-                closes = [r["close"] for r in rates_m15]
-                highs  = [r["high"]  for r in rates_m15]
-                lows   = [r["low"]   for r in rates_m15]
-                estado_mkt, ajuste = self.ai.evaluar_mercado(closes, highs, lows)
-                if ajuste is None:
-                    logs.append(f"🛑 {sym}: mercado VOLÁTIL — AIManager bloquea entrada")
+                tutup  = [r["close"] for r in rates_m15]
+                tinggi = [r["high"]  for r in rates_m15]
+                rendah = [r["low"]   for r in rates_m15]
+                status_pasar, penyesuaian = self.ai.evaluasi_pasar(tutup, tinggi, rendah)
+                if penyesuaian is None:
+                    log.append(f"🛑 {sim}: pasar VOLATIL — AIManager memblokir masuk")
                     continue
-                umbral = max(50, self.score_umbral + ajuste)
+                ambang = max(50, self.ambang_skor + penyesuaian)
 
-            # Score: EMA(40) + RSI(30) + Engulfing(30)
-            score = 0
-            score += 40 if precio > ema_val else -40
-            if rsi_val < 35:   score += 30
-            elif rsi_val > 65: score -= 30
-            if patron == "COMPRA":  score += 30
-            elif patron == "VENTA": score -= 30
+            # Skor: EMA(40) + RSI(30) + Engulfing(30)
+            skor = 0
+            skor += 40 if harga > ema_val else -40
+            if rsi_val < 35:   skor += 30
+            elif rsi_val > 65: skor -= 30
+            if pola == "BELI":  skor += 30
+            elif pola == "JUAL": skor -= 30
 
-            if score >= umbral:
-                res = self.enviar_orden(sym, 0, info, self.sl_pips, self.tp_pips)
+            if skor >= ambang:
+                res = self.kirim_order(sim, 0, info, self.sl_pips, self.tp_pips)
                 if res and res.retcode == mt5.TRADE_RETCODE_DONE:
-                    logs.append(f"✅ COMPRA — {sym} | Score {score}/{umbral} | RSI {rsi_val} | ATR {atr}")
-                    self._registrar_orden(sym, "COMPRA", precio, res.order, score)
+                    log.append(f"✅ BELI — {sim} | Skor {skor}/{ambang} | RSI {rsi_val} | ATR {atr}")
+                    self._catat_order(sim, "BELI", harga, res.order, skor)
                 else:
-                    logs.append(f"❌ COMPRA rechazada {sym} — retcode: {res.retcode if res else 'None'}")
+                    log.append(f"❌ BELI ditolak {sim} — retcode: {res.retcode if res else 'None'}")
 
-            elif score <= -umbral:
-                res = self.enviar_orden(sym, 1, info, self.sl_pips, self.tp_pips)
+            elif skor <= -ambang:
+                res = self.kirim_order(sim, 1, info, self.sl_pips, self.tp_pips)
                 if res and res.retcode == mt5.TRADE_RETCODE_DONE:
-                    logs.append(f"✅ VENTA — {sym} | Score {score}/{-umbral} | RSI {rsi_val} | ATR {atr}")
-                    self._registrar_orden(sym, "VENTA", precio, res.order, score)
+                    log.append(f"✅ JUAL — {sim} | Skor {skor}/{-ambang} | RSI {rsi_val} | ATR {atr}")
+                    self._catat_order(sim, "JUAL", harga, res.order, skor)
                 else:
-                    logs.append(f"❌ VENTA rechazada {sym} — retcode: {res.retcode if res else 'None'}")
+                    log.append(f"❌ JUAL ditolak {sim} — retcode: {res.retcode if res else 'None'}")
 
             else:
-                dir_ema = "↑" if precio > ema_val else "↓"
-                logs.append(
-                    f"📡 {sym} | Score {score:+d} (±{umbral}) | RSI {rsi_val} | "
-                    f"ATR {atr} | EMA {dir_ema} | {patron}"
+                arah_ema = "↑" if harga > ema_val else "↓"
+                log.append(
+                    f"📡 {sim} | Skor {skor:+d} (±{ambang}) | RSI {rsi_val} | "
+                    f"ATR {atr} | EMA {arah_ema} | {pola}"
                 )
 
-        return logs
+        return log
 
-    # ── Enrutador ─────────────────────────────────────────────
+    # ── Penerus ───────────────────────────────────────────────
 
     def escanear(self):
         if not mt5.terminal_info():
-            ok, msg = self.conectar()
+            ok, pesan = self.conectar()
             if not ok:
-                return [f"❌ Reconexión fallida: {msg}"]
+                return [f"❌ Gagal menyambung ulang: {pesan}"]
         return self.escanear_normal()
 
-    # ── Ejecución de órdenes ──────────────────────────────────
+    # ── Eksekusi order ────────────────────────────────────────
 
-    def enviar_orden(self, symbol, order_type, info, sl_pts, tp_pts):
-        tick = mt5.symbol_info_tick(symbol)
+    def kirim_order(self, simbol, tipe_order, info, sl_pts, tp_pts):
+        tick = mt5.symbol_info_tick(simbol)
         if not tick:
             return None
-        price  = tick.ask if order_type == 0 else tick.bid
-        digits = info.digits
-        point  = info.point
-        sl = round(price - sl_pts * point, digits) if order_type == 0 else round(price + sl_pts * point, digits)
-        tp = round(price + tp_pts * point, digits) if order_type == 0 else round(price - tp_pts * point, digits)
+        harga  = tick.ask if tipe_order == 0 else tick.bid
+        digit  = info.digits
+        poin   = info.point
+        sl = round(harga - sl_pts * poin, digit) if tipe_order == 0 else round(harga + sl_pts * poin, digit)
+        tp = round(harga + tp_pts * poin, digit) if tipe_order == 0 else round(harga - tp_pts * poin, digit)
         return mt5.order_send({
             "action":       mt5.TRADE_ACTION_DEAL,
-            "symbol":       symbol,
+            "symbol":       simbol,
             "volume":       self.lot,
-            "type":         mt5.ORDER_TYPE_BUY if order_type == 0 else mt5.ORDER_TYPE_SELL,
-            "price":        round(price, digits),
+            "type":         mt5.ORDER_TYPE_BUY if tipe_order == 0 else mt5.ORDER_TYPE_SELL,
+            "price":        round(harga, digit),
             "sl":           sl,
             "tp":           tp,
             "magic":        self.magic_number,
             "comment":      "ArgenFlow V5",
             "type_time":    mt5.ORDER_TIME_GTC,
-            "type_filling": self._get_filling_mode(symbol),
+            "type_filling": self._dapatkan_filling_mode(simbol),
         })
 
     # ── Log CSV ───────────────────────────────────────────────
 
-    def _inicializar_log(self):
-        if not os.path.exists(LOG_FILE):
-            with open(LOG_FILE, "w", newline="", encoding="utf-8") as f:
+    def _inisialisasi_log(self):
+        if not os.path.exists(FILE_LOG):
+            with open(FILE_LOG, "w", newline="", encoding="utf-8") as f:
                 csv.writer(f).writerow([
-                    "timestamp_utc", "symbol", "direccion",
-                    "precio_entrada", "ticket", "score",
+                    "timestamp_utc", "simbol", "arah",
+                    "harga_masuk", "tiket", "skor",
                     "lot", "sl_pts", "tp_pts",
                 ])
 
-    def _registrar_orden(self, symbol, direccion, precio, ticket, score):
+    def _catat_order(self, simbol, arah, harga, tiket, skor):
         ts = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        with open(LOG_FILE, "a", newline="", encoding="utf-8") as f:
+        with open(FILE_LOG, "a", newline="", encoding="utf-8") as f:
             csv.writer(f).writerow([
-                ts, symbol, direccion, precio, ticket, score,
+                ts, simbol, arah, harga, tiket, skor,
                 self.lot, self.sl_pips, self.tp_pips,
             ])

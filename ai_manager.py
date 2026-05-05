@@ -1,195 +1,206 @@
 """
-ai_manager.py — Módulo de Inteligencia para ArgenFlow V5
-=========================================================
-En V4 este archivo estaba vacío. Aquí implementamos:
+ai_manager.py — Modul Kecerdasan untuk ArgenFlow V5
+====================================================
+Pada V4 file ini kosong. Di sini kami mengimplementasikan:
 
-  1. Filtro de noticias de alto impacto (NFP, CPI, Fed, etc.)
-     Pausa el bot 30 min antes y 15 min después.
+  1. Filter berita berdampak tinggi (NFP, CPI, Fed, dll.)
+     Menjeda bot 30 menit sebelum dan 15 menit sesudah berita.
 
-  2. Evaluador de condición de mercado:
-     Clasifica el mercado como TENDENCIA, RANGO o VOLÁTIL
-     basándose en ratio de rangos + ATR relativo.
+  2. Evaluator kondisi pasar:
+     Mengklasifikasikan pasar sebagai TREN, KONSOLIDASI, atau VOLATIL
+     berdasarkan rasio rentang + ATR relatif.
 
-  3. Ajuste dinámico de umbral de score según la condición:
-     - TENDENCIA  → umbral baja 10 pts (más señales)
-     - RANGO      → umbral estándar (sin cambio)
-     - VOLÁTIL    → retorna None (bot no opera)
+  3. Penyesuaian ambang batas skor secara dinamis:
+     - TREN        → ambang turun 10 poin (lebih banyak sinyal)
+     - KONSOLIDASI → ambang standar (tidak berubah)
+     - VOLATIL     → mengembalikan None (bot tidak trading)
 
-Compatibilidad: Exness + MetaTrader 5
+Kompatibilitas: Exness + MetaTrader 5
 """
 
 import datetime
 
 
 # ─────────────────────────────────────────────────────────
-#  CALENDARIO DE NOTICIAS DE ALTO IMPACTO (UTC)
-#  Formato: (mes, dia, hora_utc, descripcion)
+#  KALENDER BERITA BERDAMPAK TINGGI (UTC)
+#  Format: (bulan, hari, jam_utc, deskripsi)
 #
-#  Actualizá esta lista cada lunes con el calendario de
-#  Forex Factory (forexfactory.com) o Investing.com.
-#  Solo incluir eventos de impacto ROJO (máximo impacto).
+#  Perbarui daftar ini setiap Senin dengan kalender dari
+#  Forex Factory (forexfactory.com) atau Investing.com.
+#  Hanya sertakan acara berdampak MERAH (dampak maksimum).
 # ─────────────────────────────────────────────────────────
-NOTICIAS_ALTO_IMPACTO = [
-    # ── Mayo 2026 (ejemplo — reemplazá con fechas reales) ──
+BERITA_DAMPAK_TINGGI = [
+    # ── Mei 2026 (contoh — ganti dengan tanggal nyata) ──
     (5,  2, 13, "Non-Farm Payrolls USA (NFP)"),
-    (5,  7, 18, "Decisión de tasas Fed (FOMC)"),
-    (5, 14, 12, "CPI USA — Inflación"),
-    (5, 21, 12, "PMI Manufacturero USA"),
-    (5, 28, 12, "GDP USA Revisado"),
-    # ── Junio 2026 ─────────────────────────────────────────
-    (6,  5, 18, "Decisión de tasas Fed (FOMC)"),
+    (5,  7, 18, "Keputusan Suku Bunga Fed (FOMC)"),
+    (5, 14, 12, "CPI USA — Inflasi"),
+    (5, 21, 12, "PMI Manufaktur USA"),
+    (5, 28, 12, "GDP USA Revisi"),
+    # ── Juni 2026 ─────────────────────────────────────────
+    (6,  5, 18, "Keputusan Suku Bunga Fed (FOMC)"),
     (6,  6, 13, "Non-Farm Payrolls USA (NFP)"),
-    (6, 11, 12, "CPI USA — Inflación"),
+    (6, 11, 12, "CPI USA — Inflasi"),
 ]
 
-MINUTOS_ANTES   = 30   # ventana de bloqueo antes de la noticia
-MINUTOS_DESPUES = 15   # ventana de bloqueo después de la noticia
+# Alias untuk kompatibilitas dengan main.py lama
+NOTICIAS_ALTO_IMPACTO = BERITA_DAMPAK_TINGGI
+
+MENIT_SEBELUM = 30   # jendela pemblokiran sebelum berita
+MENIT_SESUDAH = 15   # jendela pemblokiran sesudah berita
 
 
 class AIManager:
 
     def __init__(self):
-        self.estado = "INICIALIZANDO"
+        self.estado = "MENGINISIALISASI"
 
     # ══════════════════════════════════════════════════════════
-    #  VERIFICACIÓN PRINCIPAL — llamar antes de cada escaneo
+    #  VERIFIKASI UTAMA — panggil sebelum setiap pemindaian
     # ══════════════════════════════════════════════════════════
 
-    def ok_para_operar(self):
+    def ok_untuk_trading(self):
         """
-        Retorna (True, mensaje) si es seguro operar,
-        o (False, razon) si debe pausarse por noticia.
+        Mengembalikan (True, pesan) jika aman untuk trading,
+        atau (False, alasan) jika harus dijeda karena berita.
         """
-        ahora = datetime.datetime.utcnow()
-        bloqueado, razon = self._noticia_proxima(ahora)
-        if bloqueado:
+        sekarang = datetime.datetime.utcnow()
+        diblokir, alasan = self._berita_terdekat(sekarang)
+        if diblokir:
             self.estado = "PAUSA_NOTICIA"
-            return False, razon
+            return False, alasan
         self.estado = "OK"
-        return True, "Sin noticias de alto impacto en la ventana"
+        return True, "Tidak ada berita berdampak tinggi dalam jendela ini"
+
+    # Alias untuk kompatibilitas kode lama
+    def ok_para_operar(self):
+        return self.ok_untuk_trading()
 
     # ══════════════════════════════════════════════════════════
-    #  FILTRO DE NOTICIAS INTERNAS
+    #  FILTER BERITA INTERNAL
     # ══════════════════════════════════════════════════════════
 
-    def _noticia_proxima(self, ahora):
+    def _berita_terdekat(self, sekarang):
         """
-        Recorre el calendario y verifica si alguna noticia
-        cae dentro de la ventana de bloqueo actual.
+        Menelusuri kalender dan memeriksa apakah ada berita
+        yang jatuh dalam jendela pemblokiran saat ini.
         """
-        año = ahora.year
-        for mes, dia, hora_utc, desc in NOTICIAS_ALTO_IMPACTO:
+        tahun = sekarang.year
+        for bulan, hari, jam_utc, deskripsi in BERITA_DAMPAK_TINGGI:
             try:
-                noticia_dt = datetime.datetime(año, mes, dia, hora_utc, 0, 0)
+                berita_dt = datetime.datetime(tahun, bulan, hari, jam_utc, 0, 0)
             except ValueError:
                 continue
 
-            diff_min = (noticia_dt - ahora).total_seconds() / 60
+            selisih_menit = (berita_dt - sekarang).total_seconds() / 60
 
-            if -MINUTOS_DESPUES <= diff_min <= MINUTOS_ANTES:
-                if diff_min > 0:
-                    return True, f"⚠️ PAUSA: {desc} en {int(diff_min)} min (UTC)"
+            if -MENIT_SESUDAH <= selisih_menit <= MENIT_SEBELUM:
+                if selisih_menit > 0:
+                    return True, f"⚠️ JEDA: {deskripsi} dalam {int(selisih_menit)} menit (UTC)"
                 else:
-                    return True, f"⚠️ PAUSA: post-noticia '{desc}' — {int(-diff_min)} min pasados"
+                    return True, f"⚠️ JEDA: pasca-berita '{deskripsi}' — {int(-selisih_menit)} menit lalu"
 
         return False, ""
 
     # ══════════════════════════════════════════════════════════
-    #  EVALUADOR DE CONDICIÓN DE MERCADO
+    #  EVALUATOR KONDISI PASAR
     # ══════════════════════════════════════════════════════════
 
-    def evaluar_mercado(self, closes: list, highs: list, lows: list):
+    def evaluasi_pasar(self, tutup: list, tinggi: list, rendah: list):
         """
-        Clasifica el estado del mercado usando:
-          - ATR relativo al precio (% de volatilidad)
-          - Ratio de rangos recientes vs previos (proxy de ADX)
+        Mengklasifikasikan kondisi pasar menggunakan:
+          - ATR relatif terhadap harga (% volatilitas)
+          - Rasio ekspansi rentang vs sebelumnya (proxy ADX)
 
-        Parámetros:
-          closes, highs, lows — listas de al menos 15 precios (M15)
+        Parameter:
+          tutup, tinggi, rendah — daftar minimal 15 harga (M15)
 
-        Retorna:
-          (estado: str, ajuste_umbral: int | None)
-          ajuste_umbral = None → NO operar
-          ajuste_umbral = -10  → bajar umbral (mercado en tendencia)
-          ajuste_umbral = 0    → umbral estándar (rango lateral)
+        Mengembalikan:
+          (status: str, penyesuaian_ambang: int | None)
+          penyesuaian_ambang = None → JANGAN trading
+          penyesuaian_ambang = -10  → turunkan ambang (pasar tren)
+          penyesuaian_ambang = 0    → ambang standar (konsolidasi)
         """
-        if len(closes) < 15 or len(highs) < 15 or len(lows) < 15:
-            self.estado = "DESCONOCIDO"
-            return "DESCONOCIDO", 0
+        if len(tutup) < 15 or len(tinggi) < 15 or len(rendah) < 15:
+            self.estado = "TIDAK_DIKETAHUI"
+            return "TIDAK_DIKETAHUI", 0
 
-        # ── ATR de los últimos 14 periodos ──────────────────
+        # ── ATR dari 14 periode terakhir ────────────────────
         trs = []
         for i in range(1, 15):
-            h  = highs[-i]
-            l  = lows[-i]
-            pc = closes[-i - 1]
-            trs.append(max(h - l, abs(h - pc), abs(l - pc)))
+            h  = tinggi[-i]
+            l  = rendah[-i]
+            tc = tutup[-i - 1]
+            trs.append(max(h - l, abs(h - tc), abs(l - tc)))
         atr = sum(trs) / len(trs)
 
-        # ATR como % del precio actual
-        precio_actual = closes[-1]
-        if precio_actual == 0:
-            self.estado = "DESCONOCIDO"
-            return "DESCONOCIDO", 0
-        atr_pct = (atr / precio_actual) * 100
+        # ATR sebagai % dari harga saat ini
+        harga_saat_ini = tutup[-1]
+        if harga_saat_ini == 0:
+            self.estado = "TIDAK_DIKETAHUI"
+            return "TIDAK_DIKETAHUI", 0
+        atr_pct = (atr / harga_saat_ini) * 100
 
-        # ── Ratio de expansión de rangos (proxy ADX) ────────
-        rangos_rec  = [highs[-i] - lows[-i] for i in range(1, 8)]
-        rangos_prev = [highs[-i] - lows[-i] for i in range(8, 15)]
-        avg_rec  = sum(rangos_rec) / len(rangos_rec)
-        avg_prev = sum(rangos_prev) / len(rangos_prev)
-        ratio = avg_rec / avg_prev if avg_prev > 0 else 1.0
+        # ── Rasio ekspansi rentang (proxy ADX) ──────────────
+        rentang_baru  = [tinggi[-i] - rendah[-i] for i in range(1, 8)]
+        rentang_lama  = [tinggi[-i] - rendah[-i] for i in range(8, 15)]
+        avg_baru  = sum(rentang_baru) / len(rentang_baru)
+        avg_lama  = sum(rentang_lama) / len(rentang_lama)
+        rasio = avg_baru / avg_lama if avg_lama > 0 else 1.0
 
-        # ── Clasificación ────────────────────────────────────
-        # NOTA Exness: los instrumentos micro (m) tienen spreads
-        # variables, por eso usamos umbrales en % y no en pips fijos.
+        # ── Klasifikasi ──────────────────────────────────────
+        # CATATAN Exness: instrumen mikro (m) memiliki spread variabel,
+        # jadi kami menggunakan ambang dalam % bukan pips tetap.
         if atr_pct > 2.0:
-            # Volatilidad extrema (noticias no filtradas, flash crash)
+            # Volatilitas ekstrem (berita tidak tersaring, flash crash)
             self.estado = "VOLÁTIL"
             return "VOLÁTIL", None
 
-        elif ratio > 1.3 and atr_pct > 0.08:
-            # Expansión de rangos → mercado en tendencia
+        elif rasio > 1.3 and atr_pct > 0.08:
+            # Ekspansi rentang → pasar sedang tren
             self.estado = "TENDENCIA"
-            return "TENDENCIA", -10   # umbral baja 10 pts
+            return "TENDENCIA", -10   # ambang turun 10 poin
 
         else:
-            # Rangos estables → mercado en rango/consolidación
+            # Rentang stabil → pasar konsolidasi/sideways
             self.estado = "RANGO"
             return "RANGO", 0
 
+    # Alias untuk kompatibilitas kode lama
+    def evaluar_mercado(self, tutup, tinggi, rendah):
+        return self.evaluasi_pasar(tutup, tinggi, rendah)
+
     # ══════════════════════════════════════════════════════════
-    #  CONSULTAS PARA EL DASHBOARD
+    #  QUERY UNTUK DASBOR
     # ══════════════════════════════════════════════════════════
 
     def get_estado(self):
-        """Estado actual del AI Manager (para mostrar en dashboard)."""
+        """Status AIManager saat ini (untuk ditampilkan di dasbor)."""
         return self.estado
 
     def get_proxima_noticia(self):
         """
-        Retorna la próxima noticia de alto impacto en las
-        próximas 24 horas, o None si no hay ninguna.
+        Mengembalikan berita berdampak tinggi berikutnya dalam
+        24 jam ke depan, atau None jika tidak ada.
         """
-        ahora = datetime.datetime.utcnow()
-        año = ahora.year
-        proximas = []
+        sekarang = datetime.datetime.utcnow()
+        tahun = sekarang.year
+        berikutnya = []
 
-        for mes, dia, hora_utc, desc in NOTICIAS_ALTO_IMPACTO:
+        for bulan, hari, jam_utc, deskripsi in BERITA_DAMPAK_TINGGI:
             try:
-                noticia_dt = datetime.datetime(año, mes, dia, hora_utc, 0, 0)
+                berita_dt = datetime.datetime(tahun, bulan, hari, jam_utc, 0, 0)
             except ValueError:
                 continue
-            diff_min = (noticia_dt - ahora).total_seconds() / 60
-            if 0 < diff_min <= 1440:   # próximas 24 horas
-                proximas.append((diff_min, desc, noticia_dt))
+            selisih_menit = (berita_dt - sekarang).total_seconds() / 60
+            if 0 < selisih_menit <= 1440:   # 24 jam ke depan
+                berikutnya.append((selisih_menit, deskripsi, berita_dt))
 
-        if not proximas:
+        if not berikutnya:
             return None
-        proximas.sort(key=lambda x: x[0])
-        diff_min, desc, dt = proximas[0]
+        berikutnya.sort(key=lambda x: x[0])
+        selisih_menit, deskripsi, dt = berikutnya[0]
         return {
-            "descripcion": desc,
+            "descripcion": deskripsi,
             "hora_utc": dt.strftime("%H:%M UTC"),
-            "en_minutos": int(diff_min),
+            "en_minutos": int(selisih_menit),
         }

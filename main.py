@@ -1,15 +1,15 @@
 """
-ArgenFlow V5 Pro — Servidor Web (FastAPI)
-=========================================
+ArgenFlow V5 Pro — Server Web (FastAPI)
+=======================================
 Exness + MetaTrader 5
 
-Novedades vs V4:
-  - API /api/status ahora devuelve: estado AIManager, modo demo,
-    próxima noticia de alto impacto, y equity de la cuenta
-  - Ruta /api/toggle_sniper eliminada (Modo Sniper separado en el futuro)
-  - Intervalo de escaneo ajustable: 15s en modo normal
-  - Logs limitados a 20 mensajes (antes 15)
-  - Modo DEMO detectado automáticamente desde el .env
+Perubahan dari V4:
+  - API /api/status kini mengembalikan: status AIManager, mode demo,
+    berita berdampak tinggi berikutnya, dan ekuitas akun
+  - Rute /api/toggle_sniper dihapus (Mode Sniper dipisah di masa depan)
+  - Interval pemindaian dapat diatur: 15 detik pada mode normal
+  - Log dibatasi 20 pesan (sebelumnya 15)
+  - Mode DEMO terdeteksi otomatis dari .env
 """
 
 from fastapi import FastAPI
@@ -21,55 +21,55 @@ import asyncio
 
 try:
     import MetaTrader5 as mt5
-    MT5_AVAILABLE = True
+    MT5_TERSEDIA = True
 except ImportError:
     mt5 = None
-    MT5_AVAILABLE = False
+    MT5_TERSEDIA = False
 
 try:
     from bot_engine import ArgenBotPro
     bot = ArgenBotPro()
-    BOT_AVAILABLE = True
+    BOT_TERSEDIA = True
 except Exception:
     bot = None
-    BOT_AVAILABLE = False
+    BOT_TERSEDIA = False
 
 app = FastAPI(title="ArgenFlow V5", version="5.0")
-mensajes_ui: list[str] = []
+pesan_ui: list[str] = []
 
-MODO_DEMO = os.getenv("MT5_DEMO", "true").lower() == "true"
-INTERVALO_SCAN = 15.0   # segundos entre escaneos en modo normal
+MODE_DEMO = os.getenv("MT5_DEMO", "true").lower() == "true"
+INTERVAL_SCAN = 15.0   # detik antar pemindaian pada mode normal
 
 
 # ══════════════════════════════════════════════════════════
-#  CICLO PRINCIPAL ASÍNCRONO
+#  LOOP UTAMA ASINKRON
 # ══════════════════════════════════════════════════════════
 
-async def ciclo_mt5_loop():
+async def loop_mt5():
     while True:
-        if BOT_AVAILABLE and bot.is_running:
+        if BOT_TERSEDIA and bot.is_running:
             try:
-                logs = bot.escanear()
-                if logs:
-                    mensajes_ui.extend(logs)
+                log = bot.escanear()
+                if log:
+                    pesan_ui.extend(log)
                 else:
-                    mensajes_ui.append("📡 Radar activo — sin señales en este ciclo")
+                    pesan_ui.append("📡 Radar aktif — tidak ada sinyal pada siklus ini")
             except Exception as e:
-                mensajes_ui.append(f"❌ Error inesperado: {str(e)}")
+                pesan_ui.append(f"❌ Error tidak terduga: {str(e)}")
 
-            if len(mensajes_ui) > 20:
-                del mensajes_ui[:-20]
+            if len(pesan_ui) > 20:
+                del pesan_ui[:-20]
 
-        await asyncio.sleep(INTERVALO_SCAN)
+        await asyncio.sleep(INTERVAL_SCAN)
 
 
 @app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(ciclo_mt5_loop())
+async def event_startup():
+    asyncio.create_task(loop_mt5())
 
 
 # ══════════════════════════════════════════════════════════
-#  ARCHIVOS ESTÁTICOS (dashboard HTML)
+#  FILE STATIS (dasbor HTML)
 # ══════════════════════════════════════════════════════════
 
 if os.path.exists("static"):
@@ -77,111 +77,111 @@ if os.path.exists("static"):
 
 
 @app.get("/", include_in_schema=False)
-async def read_index():
+async def baca_index():
     return FileResponse("static/index.html")
 
 
 # ══════════════════════════════════════════════════════════
-#  API — STATUS COMPLETO
+#  API — STATUS LENGKAP
 # ══════════════════════════════════════════════════════════
 
 @app.get("/api/status")
 async def status():
-    global mensajes_ui
+    global pesan_ui
 
-    logs_to_send = list(mensajes_ui)
-    mensajes_ui = []
+    log_dikirim = list(pesan_ui)
+    pesan_ui = []
 
-    balance  = 0.0
-    equity   = 0.0
-    currency = "USD"
+    saldo    = 0.0
+    ekuitas  = 0.0
+    mata_uang = "USD"
     login_id = 0
     server   = ""
 
-    if MT5_AVAILABLE and mt5.terminal_info():
+    if MT5_TERSEDIA and mt5.terminal_info():
         info = mt5.account_info()
         if info:
-            balance  = round(info.balance, 2)
-            equity   = round(info.equity, 2)
-            currency = info.currency
-            login_id = info.login
-            server   = info.server
+            saldo     = round(info.balance, 2)
+            ekuitas   = round(info.equity, 2)
+            mata_uang = info.currency
+            login_id  = info.login
+            server    = info.server
 
-    ai_estado = "NO_DISPONIBLE"
-    proxima_noticia = None
+    status_ai = "TIDAK_TERSEDIA"
+    berita_berikutnya = None
 
-    if BOT_AVAILABLE and bot is not None:
-        ai_estado = bot.ai.get_estado()
-        proxima_noticia = bot.ai.get_proxima_noticia()
+    if BOT_TERSEDIA and bot is not None:
+        status_ai = bot.ai.get_estado()
+        berita_berikutnya = bot.ai.get_proxima_noticia()
 
     return {
-        "active":          BOT_AVAILABLE and bot.is_running,
-        "demo":            MODO_DEMO,
-        "balance":         balance,
-        "equity":          equity,
-        "currency":        currency,
+        "active":          BOT_TERSEDIA and bot.is_running,
+        "demo":            MODE_DEMO,
+        "balance":         saldo,
+        "equity":          ekuitas,
+        "currency":        mata_uang,
         "login":           login_id,
         "server":          server,
-        "ai_estado":       ai_estado,
-        "proxima_noticia": proxima_noticia,
-        "new_logs":        logs_to_send,
-        "mt5_available":   MT5_AVAILABLE,
+        "ai_estado":       status_ai,
+        "proxima_noticia": berita_berikutnya,
+        "new_logs":        log_dikirim,
+        "mt5_available":   MT5_TERSEDIA,
     }
 
 
 # ══════════════════════════════════════════════════════════
-#  API — CONTROL DEL BOT
+#  API — KONTROL BOT
 # ══════════════════════════════════════════════════════════
 
 @app.get("/api/toggle")
 async def toggle(active: bool):
-    if not BOT_AVAILABLE:
-        return {"status": "error", "message": "MetaTrader5 no disponible en este entorno (requiere Windows + MT5 Terminal)"}
+    if not BOT_TERSEDIA:
+        return {"status": "error", "message": "MetaTrader5 tidak tersedia di lingkungan ini (memerlukan Windows + MT5 Terminal)"}
     bot.is_running = active
     if active:
-        ok, msg = bot.conectar()
+        ok, pesan = bot.conectar()
         if not ok:
             bot.is_running = False
-            return {"status": "error", "message": msg}
-        tipo = "DEMO" if MODO_DEMO else "REAL"
-        mensajes_ui.append(f"🟢 Bot iniciado — Cuenta {tipo} en Exness")
+            return {"status": "error", "message": pesan}
+        tipe = "DEMO" if MODE_DEMO else "REAL"
+        pesan_ui.append(f"🟢 Bot dimulai — Akun {tipe} di Exness")
     else:
-        mensajes_ui.append("🔴 Bot detenido manualmente")
+        pesan_ui.append("🔴 Bot dihentikan secara manual")
     return {"status": "ok", "bot_active": bot.is_running}
 
 
 @app.get("/api/noticias")
-async def get_noticias():
+async def ambil_berita():
     import datetime
-    from ai_manager import NOTICIAS_ALTO_IMPACTO
-    ahora = datetime.datetime.utcnow()
-    año   = ahora.year
-    resultado = []
-    for mes, dia, hora_utc, desc in NOTICIAS_ALTO_IMPACTO:
+    from ai_manager import BERITA_DAMPAK_TINGGI
+    sekarang = datetime.datetime.utcnow()
+    tahun    = sekarang.year
+    hasil    = []
+    for bulan, hari, jam_utc, deskripsi in BERITA_DAMPAK_TINGGI:
         try:
-            dt = datetime.datetime(año, mes, dia, hora_utc, 0, 0)
+            dt = datetime.datetime(tahun, bulan, hari, jam_utc, 0, 0)
         except ValueError:
             continue
-        diff_min = (dt - ahora).total_seconds() / 60
-        if 0 < diff_min <= 1440:
-            resultado.append({
-                "descripcion": desc,
+        selisih_menit = (dt - sekarang).total_seconds() / 60
+        if 0 < selisih_menit <= 1440:
+            hasil.append({
+                "descripcion": deskripsi,
                 "hora_utc":    dt.strftime("%d/%m %H:%M UTC"),
-                "en_minutos":  int(diff_min),
+                "en_minutos":  int(selisih_menit),
             })
-    resultado.sort(key=lambda x: x["en_minutos"])
-    return {"noticias": resultado}
+    hasil.sort(key=lambda x: x["en_minutos"])
+    return {"noticias": hasil}
 
 
 # ══════════════════════════════════════════════════════════
-#  ARRANQUE
+#  STARTUP
 # ══════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     print("=" * 55)
     print("  ArgenFlow V5 Pro — Exness + MT5")
-    modo = "DEMO" if MODO_DEMO else "⚠️  CUENTA REAL"
-    print(f"  Modo: {modo}")
-    print("  Dashboard: http://0.0.0.0:5000")
+    mode = "DEMO" if MODE_DEMO else "⚠️  AKUN REAL"
+    print(f"  Mode: {mode}")
+    print("  Dasbor: http://0.0.0.0:5000")
     print("=" * 55)
     uvicorn.run(app, host="0.0.0.0", port=5000)
