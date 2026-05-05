@@ -455,7 +455,9 @@
 
   function tambahLog(baris) {
     const box      = document.getElementById('log-box');
-    const sekarang = new Date().toLocaleTimeString('id-ID', {hour12:false});
+    const sekarang = new Date().toLocaleTimeString('id-ID', {
+      hour12: false, timeZone: 'Asia/Jakarta'
+    }) + ' WIB';
     baris.forEach(b => {
       const div = document.createElement('div');
       div.className = 'log-line ' + kelasLog(b);

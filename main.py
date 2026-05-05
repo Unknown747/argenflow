@@ -175,19 +175,22 @@ async def toggle(active: bool):
 async def ambil_berita():
     import datetime
     from ai_manager import BERITA_DAMPAK_TINGGI
-    sekarang = datetime.datetime.utcnow()
-    tahun    = sekarang.year
+    WIB      = datetime.timezone(datetime.timedelta(hours=7))
+    sekarang_utc = datetime.datetime.utcnow()
+    sekarang_wib = datetime.datetime.now(WIB)
+    tahun    = sekarang_utc.year
     hasil    = []
     for bulan, hari, jam_utc, deskripsi in BERITA_DAMPAK_TINGGI:
         try:
-            dt = datetime.datetime(tahun, bulan, hari, jam_utc, 0, 0)
+            dt_utc = datetime.datetime(tahun, bulan, hari, jam_utc, 0, 0)
         except ValueError:
             continue
-        selisih_menit = (dt - sekarang).total_seconds() / 60
+        selisih_menit = (dt_utc - sekarang_utc).total_seconds() / 60
         if 0 < selisih_menit <= 1440:
+            dt_wib = dt_utc + datetime.timedelta(hours=7)
             hasil.append({
                 "descripcion": deskripsi,
-                "hora_utc":    dt.strftime("%d/%m %H:%M UTC"),
+                "hora_utc":    dt_wib.strftime("%d/%m %H:%M WIB"),
                 "en_minutos":  int(selisih_menit),
             })
     hasil.sort(key=lambda x: x["en_minutos"])
@@ -200,9 +203,13 @@ async def ambil_berita():
 
 if __name__ == "__main__":
     import platform
+    import datetime
+    WIB      = datetime.timezone(datetime.timedelta(hours=7))
+    jam_wib  = datetime.datetime.now(WIB).strftime("%H:%M:%S WIB")
     print("=" * 55)
     print("  ArgenFlow V5 Pro — Exness + MT5")
     print(f"  Platform : {platform.system()}")
+    print(f"  Waktu    : {jam_wib}")
     print(f"  Mode     : {'DEMO' if MODE_DEMO else '⚠️  AKUN REAL'}")
     print(f"  Koneksi  : {'SIMULASI (Linux/Termux)' if MODE_SIMULASI else 'MT5 NYATA (Windows)'}")
     print(f"  Dasbor   : http://0.0.0.0:{PORT}")

@@ -27,6 +27,12 @@ from ai_manager import AIManager
 
 load_dotenv()
 
+# Zona waktu WIB = UTC+7
+WIB = datetime.timezone(datetime.timedelta(hours=7))
+
+def _sekarang_wib():
+    return datetime.datetime.now(WIB)
+
 # ── Muat library MT5 ──────────────────────────────────────
 def _muat_mt5():
     try:
@@ -138,7 +144,7 @@ class ArgenBotPro:
     # ══════════════════════════════════════════════════════
 
     def _reset_tracker_harian(self, saldo):
-        hari_ini = datetime.datetime.utcnow().date()
+        hari_ini = _sekarang_wib().date()
         if self._tanggal_hari != hari_ini:
             self._tanggal_hari     = hari_ini
             self._saldo_awal_hari  = saldo
@@ -176,12 +182,13 @@ class ArgenBotPro:
     # ══════════════════════════════════════════════════════
 
     def _dalam_sesi_aktif(self):
-        sekarang = datetime.datetime.utcnow()
-        if sekarang.weekday() >= 5:
+        # Gunakan UTC untuk filter sesi (jam London/NY), WIB untuk tampilan
+        sekarang_utc = datetime.datetime.utcnow()
+        if sekarang_utc.weekday() >= 5:
             return False
         if MODE_SIMULASI:
             return True
-        return JAM_MULAI_SESI <= sekarang.hour < JAM_AKHIR_SESI
+        return JAM_MULAI_SESI <= sekarang_utc.hour < JAM_AKHIR_SESI
 
     # ══════════════════════════════════════════════════════
     #  INDIKATOR
@@ -437,7 +444,12 @@ class ArgenBotPro:
         label_sim = " [SIM]" if MODE_SIMULASI else ""
 
         if not self._dalam_sesi_aktif():
-            log.append("⏰ Di luar sesi London/NY — bot menunggu")
+            jam_wib_mulai = JAM_MULAI_SESI + 7
+            jam_wib_akhir = JAM_AKHIR_SESI + 7
+            log.append(
+                f"⏰ Di luar sesi London/NY — bot menunggu "
+                f"(aktif {jam_wib_mulai:02d}:00–{jam_wib_akhir:02d}:00 WIB)"
+            )
             return log
 
         # Ambil data akun
@@ -627,7 +639,7 @@ class ArgenBotPro:
                 ])
 
     def _catat_order(self, simbol, arah, harga, tiket, skor, lot, sl_pips, tp_pips):
-        ts   = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        ts   = _sekarang_wib().strftime("%Y-%m-%d %H:%M:%S WIB")
         mode = "SIMULASI" if MODE_SIMULASI else "NYATA"
         rr   = round(tp_pips / sl_pips, 2) if sl_pips > 0 else 0
         with open(FILE_LOG, "a", newline="", encoding="utf-8") as f:
