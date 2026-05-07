@@ -1,0 +1,353 @@
+### 9. SAFETY NET UNTUK MODAL $5-$10
+
+#### a) Maximum Daily Loss Hard Stop
+```python
+HARD_STOP_LOSS_DAILY = 20  # Jika loss 20% dalam sehari, bot mati total (bisa di-reset manual)
+RESET_TIME = "00:00"  # Reset hitungan loss harian pada jam ini (WIB)
+```
+
+#### b) Maximum Consecutive Losses
+```python
+MAX_LOSS_BERTURUT_TURUT = 3  # Jika loss 3x berturut-turut, pause 1 jam
+PAUSE_AFTER_LOSSES_MENIT = 60
+```
+
+#### c) Equity Protection
+```python
+MIN_EKUITAS = 2.0  # Jika ekuitas turun di bawah $2, bot shutdown dan kirim notifikasi
+STOP_TRADE_IF_EQUITY_BELOW = 3.0  # Berhenti buka posisi baru jika ekuitas < $3
+```
+
+#### d) Lot Progression Limiter
+```python
+MAX_LOT_PER_DAY = 0.5  # Total lot maksimal per hari (untuk mencegah overtrading)
+LOT_COUNTER_RESET = "00:00"  # Reset counter lot harian
+```
+
+### 10. FRAUD & BROKER PROTECTION
+
+```python
+# Cegah eksekusi order gagal karena requote/slipage
+MAX_SLIPPAGE_POIN = 5  # Tolak eksekusi jika slippage > 5 poin
+RETRY_ORDER_MAX = 3  # Maksimal retry jika order gagal
+RETRY_DELAY_DETIK = 2
+
+# Deteksi spread abnormal
+SPREAD_WARNING_MULTIPLIER = 3  # Peringatan jika spread > 3x normal
+SPREAD_SAFETY_MULTIPLIER = 5  # Stop trading jika spread > 5x normal
+
+# Brokers known issues (blacklist saat kondisi tertentu)
+HINDARI_TRADING_JAM_SPREAD_LEBAR = [
+    ("23:00", "00:30"),  # Swap/rollover jam (spread lebar)
+    ("04:50", "05:10"),  # Akhir sesi Asia (liquidity tipis)
+]
+```
+
+### 11. PERFORMANCE MONITORING (UNTUK EVALUASI)
+
+```python
+# Simpan statistik ke file JSON (bukan hanya memory)
+TRADE_LOG_FILE = "trades_log.json"  # Riwayat semua trade
+DAILY_STATS_FILE = "daily_stats.json"  # Statistik harian
+
+# Metrics yang disimpan per hari:
+# - Total profit/loss
+# - Win rate
+# - Average win / average loss
+# - Maximum drawdown
+# - Profit factor
+# - Sharpe ratio (opsional)
+# - Jumlah trade
+# - Average holding time
+```
+
+### 12. REKOVERY OTOMATIS UNTUK REPLIT
+
+```python
+# Karena Replit bisa restart tiba-tiba
+SAVE_STATE_EVERY = 60  # Simpan state bot setiap 60 detik (dalam detik)
+STATE_FILE = "bot_state.json"
+
+# State yang disimpan:
+# - Posisi terbuka (symbol, lot, open price, SL, TP, opening time)
+# - Urutan grid level (jika pakai grid)
+# - Daily loss counter
+# - Consecutive loss counter
+# - Total lot hari ini
+# - Ekuitas terakhir
+
+# Fungsi auto-recovery
+def restore_state_after_restart():
+    """Load state dan re-open posisi jika diperlukan"""
+    pass
+```
+
+### 13. EMAIL/TELEGRAM NOTIFICATION (UNTUK MODAL KECIL)
+
+```python
+# Kirim notifikasi untuk event penting (gratis pakai Telegram Bot)
+TELEGRAM_BOT_TOKEN = ""  # Isi dari @BotFather
+TELEGRAM_CHAT_ID = ""  # Isi dengan ID chat Anda
+
+# Event yang dikirim notifikasi:
+# - Bot start / stop
+# - Ekuitas turun > 10% dalam 1 jam
+# - Hard stop loss tercapai
+# - Trade dieksekusi (opsional, bisa matikan jika terlalu spam)
+# - Error kritis
+```
+
+### 14. INTELLIGENT SESSION TIMING (KHUSUS SCALPING)
+
+```python
+# Sesi trading paling likuid untuk modal kecil
+TRADING_SESSIONS = {
+    "LONDON": {"start": 7, "end": 16, "tz": "UTC"},  # 07:00-16:00 UTC
+    "NEW_YORK": {"start": 12, "end": 21, "tz": "UTC"},  # 12:00-21:00 UTC
+    "ASIA": {"start": 23, "end": 8, "tz": "UTC"},  # spread lebih lebar, kurang ideal
+}
+
+# Untuk modal kecil, hanya trading sesi overlap (likuiditas tinggi)
+SESSION_OVERLAP_ONLY = True  # Hanya trade saat overlap London-New York (12:00-16:00 UTC)
+```
+
+### 15. DYNAMIC STOP LOSS (ATR-BASED DENGAN BATAS)
+
+```python
+# Gunakan ATR tapi dengan batasan aman untuk modal kecil
+USE_ATR_SL = True
+ATR_PERIOD = 14  # Periode ATR
+ATR_MULTIPLIER_SL = 1.0  # 1x ATR untuk SL
+ATR_MULTIPLIER_TP = 1.5  # 1.5x ATR untuk TP
+
+# Batasan mutlak (override ATR jika terlalu lebar)
+MAX_ATR_SL_POIN = 30  # Stop loss tidak boleh >30 poin meskipun ATR besar
+MIN_ATR_SL_POIN = 10  # Stop loss tidak boleh <10 poin (hindari terlalu ketat)
+
+# Fungsi ATR-Dynamic SL
+def hitung_sl_atr(self, symbol):
+    atr = self.hitung_atr(symbol, ATR_PERIOD)
+    sl_poin = atr * ATR_MULTIPLIER_SL
+    # Clamp ke batasan
+    sl_poin = max(MIN_ATR_SL_POIN, min(MAX_ATR_SL_POIN, sl_poin))
+    return sl_poin
+```
+
+### 16. BI-DIRECTIONAL TRADING LOGIC (TANPA PREDIKSI ARAH)
+
+```python
+# Untuk scalping modal kecil, lebih baik pakai reversal/support resistance
+STRATEGI_SCALPING = "REVERSAL"  # Opsi: MOMENTUM / REVERSAL / GRID_LITE
+
+# Reversal scalping (cocok untuk modal kecil)
+REVERSAL_LOOKBACK_CANDLES = 5  # Cek 5 candle terakhir
+REVERSAL_THRESHOLD_POIN = 5  # Jika harga bergerak 5 poin tanpa koreksi, sinyal reversal
+
+# Grid Lite (limited grid, bukan martingale)
+GRID_LITE_LEVELS = 2  # Hanya 2 level maksimal
+GRID_LITE_DISTANCE_POIN = 15
+GRID_LITE_MAX_LOT_MULTIPLIER = 1.5  # Level 2: 1.5x lot level 1
+```
+
+### 17. PATH PYTHON & DEPENDENSI UNTUK REPLIT
+
+```markdown
+### STRUKTUR FILE REPLIT YANG IDEAL
+
+```
+argenflow/
+├── main.py                 # FastAPI server
+├── bot_engine.py           # Logika trading (UPDATE INI)
+├── ai_manager.py           # News & risk (tidak diubah)
+├── mt5_sim.py              # Simulator untuk Linux/Termux
+├── keep_alive.py           # Ping sendiri (cegah sleep)
+├── requirements.txt        # Dependencies
+├── .env                    # Environment variables (jangan commit ke GitHub)
+├── static/                 # Dashboard files (HTML/CSS/JS)
+│   └── index.html
+├── trades_log.json         # Auto-generated (jangan di-commit)
+├── bot_state.json          # Auto-generated (jangan di-commit)
+└── daily_stats.json        # Auto-generated (jangan di-commit)
+```
+
+### KODE `keep_alive.py` LENGKAP
+
+```python
+import requests
+import time
+import threading
+import os
+
+URL = os.getenv("REPL_URL", "http://localhost:5000")
+PING_INTERVAL = 180  # 3 menit
+
+def keep_alive():
+    """Ping endpoint /api/status agar Replit tidak sleep"""
+    while True:
+        try:
+            response = requests.get(f"{URL}/api/status", timeout=10)
+            if response.status_code == 200:
+                print(f"[KEEPALIVE] Ping success at {time.ctime()}")
+            else:
+                print(f"[KEEPALIVE] Ping failed: {response.status_code}")
+        except Exception as e:
+            print(f"[KEEPALIVE] Error: {e}")
+        time.sleep(PING_INTERVAL)
+
+# Jalankan di thread terpisah
+thread = threading.Thread(target=keep_alive, daemon=True)
+thread.start()
+```
+
+### PANDUAN MENJALANKAN DI REPLIT (LENGKAP)
+
+1. **Buat Replit baru** → Pilih "Python"
+2. **Upload semua file** (atau clone dari GitHub)
+3. **Buat file `.env`** dan isi:
+   ```
+   MT5_DEMO=true
+   MT5_LOGIN=your_login
+   MT5_PASSWORD=your_password
+   MT5_SERVER=Exness-Demo
+   PORT=5000
+   ```
+4. **Install dependencies**:
+   - Buka tab "Shell"
+   - Ketik: `pip install -r requirements.txt`
+5. **Jalankan bot**:
+   - Di Shell: `python main.py`
+   - Akan muncul: `http://0.0.0.0:5000` (klik "Open in browser")
+6. **Agar tetap hidup 24/7**:
+   - Daftar di [UptimeRobot](https://uptimerobot.com) (gratis)
+   - Tambahkan monitor HTTP ke: `https://[replit-nama].repl.co/api/status`
+   - Interval: 5 menit
+7. **Monitoring**:
+   - Buka dashboard di browser
+   - Pantau ekuitas, drawdown, dan log
+```
+
+### 18. DASHBOARD ADDITIONAL INFO (UNTUK MODAL KECIL)
+
+```html
+<!-- Tambahkan di static/index.html (bagian status card) -->
+<div class="risk-panel">
+    <h4>🛡️ Mode Modal Kecil</h4>
+    <p>Status: <span id="modal-kecil-status">AKTIF / NONAKTIF</span></p>
+    <p>Lot saat ini: <span id="current-lot">0.00</span></p>
+    <p>Stop Loss: <span id="current-sl">0</span> poin</p>
+    <p>Take Profit: <span id="current-tp">0</span> poin</p>
+    <p>Spread saat ini: <span id="current-spread">0</span> poin</p>
+    <p>Sisa drawdown hari ini: <span id="remaining-drawdown">0</span>%</p>
+    <p>Loss beruntun: <span id="consecutive-loss">0</span></p>
+</div>
+
+<!-- Tambahkan chart untuk equity curve -->
+<canvas id="equityChart" width="400" height="200"></canvas>
+```
+
+### 19. EMERGENCY SHUTDOWN SCRIPT
+
+```python
+# Tambahkan di main.py (endpoint emergency)
+@app.get("/api/emergency_stop")
+async def emergency_stop(password: str):
+    """Endpoint darurat untuk shutdown bot (proteksi dengan password)"""
+    EMERGENCY_PASSWORD = os.getenv("EMERGENCY_PASSWORD", "savemymoney")
+    
+    if password != EMERGENCY_PASSWORD:
+        return {"status": "error", "message": "Wrong password"}
+    
+    # Close all positions
+    if BOT_TERSEDIA and bot:
+        bot.is_running = False
+        positions = mt5.positions_get()
+        for pos in positions:
+            mt5.Close(pos.ticket)
+        pesan_ui.append("🚨 EMERGENCY SHUTDOWN: All positions closed")
+        return {"status": "emergency_stopped", "message": "Bot stopped, all positions closed"}
+    return {"status": "error", "message": "Bot not available"}
+```
+
+### 20. AUTO-COMPOUNDING (OPSIONAL UNTUK MODAL KECIL)
+
+```python
+# Compounding setting (untuk tumbuh dari $10 ke $50+)
+COMPOUND_MODE = True  # Aktifkan compounding
+COMPOUND_THRESHOLD = 20  # Mulai compounding setelah profit $20
+COMPOUND_RISK_INCREMENT = 0.25  # Tambah risk 0.25% setiap +$10 profit
+
+# Contoh: modal $10 risk 0.5%
+# Profit +$20 -> total $30 -> risk jadi 0.75%
+# Profit +$20 lagi -> total $50 -> risk jadi 1.0%
+
+# Fungsi auto-compounding
+def update_risk_based_on_equity(self):
+    if not COMPOUND_MODE:
+        return
+    profit_above_threshold = max(0, self.saldo - COMPOUND_THRESHOLD)
+    level = profit_above_threshold // 10  # setiap $10 profit
+    self.risiko_pct = RISIKO_PERSEN_MODAL_KECIL + (level * COMPOUND_RISK_INCREMENT)
+    self.risiko_pct = min(self.risiko_pct, 2.0)  # Maksimal 2% risk
+```
+
+### 21. LOGGING DENGAN ROTATION
+
+```python
+# Hindari file log terlalu besar di Replit (storage terbatas)
+import logging
+from logging.handlers import RotatingFileHandler
+
+# Setup logging
+logger = logging.getLogger("ArgenFlow")
+handler = RotatingFileHandler("bot.log", maxBytes=1_000_000, backupCount=3)  # 1MB per file, max 3 file
+logger.addHandler(handler)
+
+# Gunakan logger.bot() dan logger.error()
+logger.info(f"Bot started with balance ${balance}")
+```
+
+### 22. VALIDASI SEBELUM TRADE EKSEKUSI (CEKLIST)
+
+```python
+def can_execute_trade(self, symbol, side):
+    """Cek semua safety sebelum eksekusi trade"""
+    
+    checks = [
+        ("Bot running", self.is_running),
+        ("Modal kecil safe", self.saldo >= MIN_EKUITAS),
+        ("Spread OK", self.cek_spread(symbol) <= MAX_SPREAD_POIN),
+        ("Tidak kena max loss harian", self.daily_loss_percent < MAKSIMAL_RUGI_HARIAN_PERSEN),
+        ("Tidak kena max consecutive loss", self.consecutive_losses < MAX_LOSS_BERTURUT_TURUT),
+        ("Jam trading valid", self.is_trading_hours()),
+        ("Tidak ada news", not self.ada_berita_dalam_menit(HINDARI_NEWS_MENIT)),
+        ("Lot size aman", self.lot <= LOT_MAX_MODAL_KECIL),
+        ("Ekuitas cukup", self.equity >= MIN_EKUITAS),
+        ("Belum mencapai target harian", self.daily_profit_target <= self.target_profit_harian),
+    ]
+    
+    for check_name, result in checks:
+        if not result:
+            self.log(f"[REJECT] {check_name} failed")
+            return False, check_name
+    
+    return True, "All checks passed"
+```
+
+---
+```
+
+## 📌 RINGKASAN TAMBAHAN FITUR PRIORITAS
+
+| Prioritas | Fitur | Fungsi untuk Modal $5-$10 |
+| :--- | :--- | :--- |
+| **WAJIB** | Maximum Daily Loss Hard Stop | Cegah loss >20% dalam sehari |
+| **WAJIB** | Equity Protection <$3 | Stop trading sebelum bangkrut |
+| **WAJIB** | State Recovery (JSON) | Bot selamat dari restart Replit |
+| **PENTING** | Max Consecutive Losses | Hindari overtrading setelah loss |
+| **PENTING** | Sesi Trading Filter | Hanya trading di jam likuid |
+| **PENTING** | Spread Safety Filter | Hindari spread ekstrim |
+| **NICE-TO-HAVE** | Telegram Notifikasi | Tahu kondisi darurat |
+| **NICE-TO-HAVE** | Auto-Compounding | Bantu tumbuh modal |
+| **NICE-TO-HAVE** | Emergency Stop Endpoint | Matikan bot dari browser |
+
+---
