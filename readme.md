@@ -55,7 +55,7 @@ ArgenFlow V5 Pro adalah bot trading otomatis yang:
 
 ```bash
 # 1. Clone atau unggah file ke server
-git clone https://github.com/username/argenflow.git
+git clone https://github.com/Unknown747/argenflow.git
 cd argenflow
 
 # 2. Beri izin eksekusi pada skrip setup
