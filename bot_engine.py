@@ -710,9 +710,9 @@ class ArgenBotPro:
             )
             return log
 
-        # Ambil data akun
-        saldo   = 7.5
-        ekuitas = 7.5
+        # Ambil data akun — gunakan saldo terakhir yang diketahui sebagai default
+        saldo   = self._saldo_terakhir if self._saldo_terakhir > 0 else 7.5
+        ekuitas = saldo
         if mt5.terminal_info():
             info_akun = mt5.account_info()
             if info_akun:

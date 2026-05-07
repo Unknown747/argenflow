@@ -5,9 +5,10 @@ Exness + MetaTrader 5
 Kompatibel: Windows (MT5 nyata) | Linux / Termux (Simulasi)
 """
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 import uvicorn
 import os
 import asyncio
@@ -36,12 +37,11 @@ except Exception as e:
     BOT_TERSEDIA = False
     print(f"[PERINGATAN] Gagal memuat bot: {e}")
 
-app = FastAPI(title="ArgenFlow V5", version="6.0")
-pesan_ui: list[str] = []
-
 MODE_DEMO     = os.getenv("MT5_DEMO", "true").lower() == "true"
 PORT          = int(os.getenv("PORT", "5000"))
 INTERVAL_SCAN = 15.0
+
+pesan_ui: list[str] = []
 
 
 # ══════════════════════════════════════════════════════════
@@ -67,10 +67,17 @@ async def loop_mt5():
         await asyncio.sleep(INTERVAL_SCAN)
 
 
-@app.on_event("startup")
-async def event_startup():
-    asyncio.create_task(loop_mt5())
+# ══════════════════════════════════════════════════════════
+#  LIFESPAN (menggantikan @app.on_event yang deprecated)
+# ══════════════════════════════════════════════════════════
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    asyncio.create_task(loop_mt5())
+    yield
+
+
+app = FastAPI(title="ArgenFlow V5", version="6.0", lifespan=lifespan)
 
 if os.path.exists("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -79,6 +86,11 @@ if os.path.exists("static"):
 @app.get("/", include_in_schema=False)
 async def baca_index():
     return FileResponse("static/index.html")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
 
 
 # ══════════════════════════════════════════════════════════
@@ -210,14 +222,14 @@ async def ambil_trades():
 async def ambil_berita():
     import datetime
     from ai_manager import BERITA_DAMPAK_TINGGI
-    WIB      = datetime.timezone(datetime.timedelta(hours=7))
-    sekarang_utc = datetime.datetime.utcnow()
-    sekarang_wib = datetime.datetime.now(WIB)
-    tahun    = sekarang_utc.year
-    hasil    = []
-    for bulan, hari, jam_utc, deskripsi in BERITA_DAMPAK_TINGGI:
+    WIB          = datetime.timezone(datetime.timedelta(hours=7))
+    sekarang_utc = datetime.datetime.now(datetime.UTC)
+    tahun        = sekarang_utc.year
+    hasil        = []
+    for item in BERITA_DAMPAK_TINGGI:
+        bulan, hari, jam_utc, deskripsi = item["bulan"], item["hari"], item["jam_utc"], item["deskripsi"]
         try:
-            dt_utc = datetime.datetime(tahun, bulan, hari, jam_utc, 0, 0)
+            dt_utc = datetime.datetime(tahun, bulan, hari, jam_utc, 0, 0, tzinfo=datetime.UTC)
         except ValueError:
             continue
         selisih_menit = (dt_utc - sekarang_utc).total_seconds() / 60

@@ -2,7 +2,8 @@
 mt5_sim.py — Simulator MetaTrader5 untuk Linux / Termux
 ========================================================
 Meniru API MetaTrader5 secara lengkap menggunakan data
-pasar acak yang realistis (random walk + volatilitas).
+pasar yang diambil dari Yahoo Finance (harga live) dengan
+fallback ke random walk jika tidak ada koneksi internet.
 
 Digunakan otomatis ketika library MetaTrader5 asli
 tidak tersedia (Linux, macOS, Termux/Android).
@@ -21,6 +22,7 @@ import os
 import random
 import time
 import datetime
+import threading
 
 # ══════════════════════════════════════════════════════════
 #  KONSTANTA (sama persis dengan MetaTrader5 asli)
@@ -51,14 +53,14 @@ SYMBOL_FILLING_IOC = 2
 TRADE_RETCODE_DONE = 10009
 
 # ══════════════════════════════════════════════════════════
-#  DATA HARGA DASAR PER SIMBOL
+#  HARGA DASAR FALLBACK (digunakan jika Yahoo Finance gagal)
 # ══════════════════════════════════════════════════════════
 
-_HARGA_DASAR = {
+_HARGA_DASAR_FALLBACK = {
     "EURUSDm": 1.0850,
     "GBPUSDm": 1.2700,
     "USDJPYm": 149.50,
-    "XAUUSDm": 2320.00,
+    "XAUUSDm": 3300.00,
 }
 
 _DIGIT_SIMBOL = {
@@ -82,24 +84,97 @@ _VOLATILITAS = {
     "XAUUSDm": 3.50,
 }
 
+# Ticker Yahoo Finance untuk setiap simbol
+_TICKER_YAHOO = {
+    "EURUSDm": "EURUSD=X",
+    "GBPUSDm": "GBPUSD=X",
+    "USDJPYm": "USDJPY=X",
+    "XAUUSDm": "GC=F",
+}
+
 # State global simulator
-_harga_sekarang = dict(_HARGA_DASAR)
+_harga_sekarang = dict(_HARGA_DASAR_FALLBACK)
+_harga_dasar    = dict(_HARGA_DASAR_FALLBACK)   # diperbarui setelah fetch live
 _posisi_terbuka = {}    # simbol → list of _Posisi
 _koneksi_aktif  = False
 _nomor_tiket    = 10000
-_saldo_sim      = 7.5     # Saldo simulasi realistis untuk akun mikro $5-10
+_saldo_sim      = 7.5   # Saldo simulasi realistis untuk akun mikro $5-10
+_waktu_update_terakhir = 0.0
+_INTERVAL_UPDATE_HARGA = 300   # detik — refresh harga live setiap 5 menit
 
 
 # ══════════════════════════════════════════════════════════
-#  PEMBANGKIT HARGA REALISTIS
+#  FETCH HARGA LIVE — YAHOO FINANCE
+# ══════════════════════════════════════════════════════════
+
+def _ambil_harga_yahoo():
+    """
+    Ambil harga live dari Yahoo Finance untuk semua simbol.
+    Return dict simbol→harga, atau None jika gagal.
+    Timeout 5 detik agar tidak memblokir startup.
+    """
+    try:
+        import requests
+        hasil = {}
+        for simbol, ticker in _TICKER_YAHOO.items():
+            url = (
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+                f"?interval=1m&range=1d"
+            )
+            r = requests.get(
+                url,
+                timeout=5,
+                headers={"User-Agent": "Mozilla/5.0 (ArgenFlow/5.0)"},
+            )
+            data  = r.json()
+            harga = data["chart"]["result"][0]["meta"]["regularMarketPrice"]
+            digit = _DIGIT_SIMBOL.get(simbol, 5)
+            hasil[simbol] = round(float(harga), digit)
+        return hasil
+    except Exception:
+        return None
+
+
+def _perbarui_harga_live():
+    """
+    Coba ambil harga live dari Yahoo Finance.
+    Jika berhasil, perbarui _harga_dasar dan _harga_sekarang.
+    Jika gagal, tetap pakai nilai sebelumnya (tidak crash).
+    """
+    global _harga_dasar, _harga_sekarang, _waktu_update_terakhir
+    hasil = _ambil_harga_yahoo()
+    if hasil:
+        _harga_dasar.update(hasil)
+        # Sinkronkan harga saat ini ke harga baru (reset drift kecil)
+        for simbol, harga in hasil.items():
+            _harga_sekarang[simbol] = harga
+        _waktu_update_terakhir = time.time()
+        print(
+            f"[mt5_sim] Harga live diperbarui: "
+            + ", ".join(f"{s}={v}" for s, v in hasil.items())
+        )
+    else:
+        print("[mt5_sim] Gagal ambil harga live — tetap pakai harga sebelumnya")
+
+
+def _jadwal_update_harga():
+    """Thread background: perbarui harga live setiap _INTERVAL_UPDATE_HARGA detik."""
+    while True:
+        time.sleep(_INTERVAL_UPDATE_HARGA)
+        if _koneksi_aktif:
+            _perbarui_harga_live()
+
+
+# ══════════════════════════════════════════════════════════
+#  PEMBANGKIT HARGA REALISTIS (random walk antar fetch)
 # ══════════════════════════════════════════════════════════
 
 def _perbarui_harga(simbol):
-    """Gerakkan harga dengan random walk + mean reversion ringan."""
+    """Gerakkan harga dengan random walk + mean reversion ringan terhadap harga live."""
     global _harga_sekarang
     vol   = _VOLATILITAS.get(simbol, 0.001)
     gerak = random.gauss(0, vol * 0.3)
-    dasar = _HARGA_DASAR[simbol]
+    dasar = _harga_dasar[simbol]
     revert = (dasar - _harga_sekarang[simbol]) * 0.005
     _harga_sekarang[simbol] = round(
         _harga_sekarang[simbol] + gerak + revert,
@@ -111,14 +186,14 @@ def _buat_candles(simbol, jumlah):
     """Buat data candle OHLC realistis untuk indikator."""
     vol    = _VOLATILITAS.get(simbol, 0.001)
     digit  = _DIGIT_SIMBOL.get(simbol, 5)
-    harga  = _harga_sekarang.get(simbol, _HARGA_DASAR.get(simbol, 1.0))
+    harga  = _harga_sekarang.get(simbol, _harga_dasar.get(simbol, 1.0))
     ts     = int(time.time()) - jumlah * 900
     candles = []
 
     for _ in range(jumlah):
-        buka  = harga
-        gerak = random.gauss(0, vol)
-        tutup = round(buka + gerak, digit)
+        buka   = harga
+        gerak  = random.gauss(0, vol)
+        tutup  = round(buka + gerak, digit)
         tinggi = round(max(buka, tutup) + abs(random.gauss(0, vol * 0.5)), digit)
         rendah = round(min(buka, tutup) - abs(random.gauss(0, vol * 0.5)), digit)
         candles.append({
@@ -226,6 +301,11 @@ class _Posisi:
 def initialize(*args, **kwargs):
     global _koneksi_aktif
     _koneksi_aktif = True
+    # Ambil harga live saat pertama kali terhubung
+    _perbarui_harga_live()
+    # Jalankan thread background untuk update berkala
+    t = threading.Thread(target=_jadwal_update_harga, daemon=True)
+    t.start()
     return True
 
 
@@ -253,19 +333,19 @@ def last_error():
 
 
 def symbol_info(simbol):
-    if simbol not in _HARGA_DASAR:
+    if simbol not in _harga_dasar:
         return None
     return _InfoSimbol(simbol)
 
 
 def symbol_info_tick(simbol):
-    if simbol not in _HARGA_DASAR:
+    if simbol not in _harga_dasar:
         return None
     return _Tick(simbol)
 
 
 def copy_rates_from_pos(simbol, timeframe, pos, jumlah):
-    if simbol not in _HARGA_DASAR:
+    if simbol not in _harga_dasar:
         return None
     return _buat_candles(simbol, jumlah)
 
@@ -276,7 +356,6 @@ def positions_get(symbol=None, **kwargs):
         daftar = _posisi_terbuka.get(symbol, [])
         if not daftar:
             return None
-        # Update profit floating
         for p in daftar:
             point = _POIN_SIMBOL.get(p.symbol, 0.00001)
             h = _harga_sekarang.get(p.symbol, p.price_open)
@@ -311,8 +390,8 @@ def order_send(request):
 
     # ── Modifikasi SL/TP (Trailing Stop) ──────────────────
     if aksi == TRADE_ACTION_SLTP:
-        simbol = request.get("symbol", "")
-        tiket  = request.get("position", 0)
+        simbol  = request.get("symbol", "")
+        tiket   = request.get("position", 0)
         sl_baru = request.get("sl", 0)
         tp_baru = request.get("tp", 0)
 
@@ -323,16 +402,16 @@ def order_send(request):
                 pos.tp = tp_baru
                 return _HasilOrder(retcode=TRADE_RETCODE_DONE, tiket=tiket)
 
-        return _HasilOrder(retcode=10004, tiket=0)  # TRADE_RETCODE_REQUOTE (tidak ditemukan)
+        return _HasilOrder(retcode=10004, tiket=0)
 
     # ── Buka Posisi Baru ──────────────────────────────────
-    simbol  = request.get("symbol", "")
-    tipe    = request.get("type", 0)
-    harga   = request.get("price", _harga_sekarang.get(simbol, 1.0))
-    volume  = request.get("volume", 0.01)
-    sl      = request.get("sl", 0)
-    tp      = request.get("tp", 0)
-    magic   = request.get("magic", 0)
+    simbol = request.get("symbol", "")
+    tipe   = request.get("type", 0)
+    harga  = request.get("price", _harga_sekarang.get(simbol, 1.0))
+    volume = request.get("volume", 0.01)
+    sl     = request.get("sl", 0)
+    tp     = request.get("tp", 0)
+    magic  = request.get("magic", 0)
 
     _nomor_tiket += 1
     tiket = _nomor_tiket
