@@ -285,11 +285,12 @@
       </div>
       <div class="stat-item">
         <div class="stat-label">Risiko Efektif</div>
-        <div class="stat-value" id="risiko-pct" style="color:var(--blue)">2.0%</div>
+        <div class="stat-value" id="risiko-pct" style="color:var(--blue)">2.5%</div>
       </div>
       <div class="stat-item">
-        <div class="stat-label">Batas Rugi / Hari</div>
-        <div class="stat-value" id="max-rugi-pct" style="color:var(--yellow)">2.0%</div>
+        <div class="stat-label">🎯 Target Profit / Trade</div>
+        <div class="stat-value" id="target-profit-val" style="color:var(--green)">$—</div>
+        <div style="font-size:10px; color:var(--muted); margin-top:3px;" id="target-profit-sub">Auto-Close</div>
       </div>
       <div class="stat-item">
         <div class="stat-label">Fase</div>
@@ -437,7 +438,15 @@
       pnlEl.className   = 'stat-value ' + (pnl > 0 ? 'val-green' : pnl < 0 ? 'val-red' : 'val-muted');
 
       document.getElementById('trade-count').textContent = s.trade_hari_ini ?? 0;
-      document.getElementById('max-rugi-pct').textContent = (s.max_rugi_pct ?? 2.0).toFixed(1) + '%';
+
+      // Target Profit Cepat
+      const tpAktif = s.target_profit_aktif !== false;
+      const tpDin   = s.target_profit_dinamis ?? s.target_profit_usd ?? 0.30;
+      const tpEl    = document.getElementById('target-profit-val');
+      const tpSub   = document.getElementById('target-profit-sub');
+      tpEl.textContent = tpAktif ? '$' + tpDin.toFixed(2) : '—';
+      tpEl.style.color = tpAktif ? 'var(--green)' : 'var(--muted)';
+      tpSub.textContent = tpAktif ? '💰 Auto-Close Aktif' : 'Nonaktif';
 
       // ── Progress profit dari modal deposit ────────────
       const awalModal = s.saldo_awal_modal > 0 ? s.saldo_awal_modal : 0;

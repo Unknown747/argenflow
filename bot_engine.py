@@ -90,6 +90,13 @@ class ArgenBotPro:
         self.max_rugi_harian_pct = float(os.getenv("MAX_RUGI_HARIAN", "2.0"))   # Mikro: batas rugi 2%/hari
         self.max_spread          = int(os.getenv("MAX_SPREAD",        "20"))     # Mikro: spread ketat
 
+        # ── Target Profit Cepat — auto-close saat profit menyentuh target ──
+        # Misal: masuk $1 risiko → close otomatis saat profit USD tercapai
+        # Tier 1 (default): tutup 100% posisi saat profit >= TARGET_PROFIT_USD
+        # Bisa di-set via .env: TARGET_PROFIT_USD=0.50
+        self.target_profit_aktif = os.getenv("TARGET_PROFIT_AKTIF", "true").lower() == "true"
+        self.target_profit_usd   = float(os.getenv("TARGET_PROFIT_USD", "0.30"))   # Target default: $0.30
+
         # ── Parameter indikator (dari .env) ───────────────
         self.periode_rsi  = int(os.getenv("PERIODE_RSI", "14"))
         self.periode_ema  = int(os.getenv("PERIODE_EMA", "50"))
@@ -317,8 +324,9 @@ class ArgenBotPro:
 
     def dapatkan_statistik(self):
         saldo_ref  = self._saldo_terakhir if self._saldo_terakhir > 0 else 0.0
-        risiko_eff = self._risiko_efektif(saldo_ref) if saldo_ref > 0 else 2.0
+        risiko_eff = self._risiko_efektif(saldo_ref) if saldo_ref > 0 else 2.5
         tp_par     = self._trailing_params(saldo_ref)
+        target_din = self._hitung_target_profit_dinamis(saldo_ref) if saldo_ref > 0 else self.target_profit_usd
         return {
             "trade_hari_ini":     self._trade_hari_ini,
             "pnl_hari_ini":       self._pnl_hari_ini,
@@ -338,6 +346,10 @@ class ArgenBotPro:
             "saldo_awal_modal":   self._saldo_awal_modal,
             "profit_pct":         round(self._profit_pct(saldo_ref), 2) if saldo_ref > 0 else 0.0,
             "fase":               self._fase_pertumbuhan(saldo_ref) if saldo_ref > 0 else "PERTUMBUHAN",
+            # Target Profit Cepat
+            "target_profit_aktif": self.target_profit_aktif,
+            "target_profit_usd":   self.target_profit_usd,
+            "target_profit_dinamis": target_din,
             # Trailing stop dinamis — nilai efektif berdasarkan fase saat ini
             "trailing_aktif":         self.trailing_aktif,
             "trailing_be_efektif":    tp_par["be_pct"],
@@ -702,6 +714,131 @@ class ArgenBotPro:
         return log
 
     # ══════════════════════════════════════════════════════
+    #  AUTO-CLOSE: TARGET PROFIT CEPAT (berbasis USD)
+    # ══════════════════════════════════════════════════════
+
+    def _tutup_posisi(self, pos):
+        """
+        Tutup posisi secara market order.
+        BUY → close dengan SELL di harga Bid
+        SELL → close dengan BUY di harga Ask
+        Mengembalikan (sukses: bool, pesan: str)
+        """
+        simbol = pos.symbol
+        tiket  = pos.ticket
+        lot    = pos.volume
+        tipe   = pos.type   # 0=BUY, 1=SELL
+
+        tick = mt5.symbol_info_tick(simbol)
+        if not tick:
+            return False, f"⚠️ Tidak bisa ambil harga {simbol}"
+
+        harga_close = tick.bid if tipe == 0 else tick.ask
+        tipe_close  = mt5.ORDER_TYPE_SELL if tipe == 0 else mt5.ORDER_TYPE_BUY
+        filling     = self._dapatkan_filling_mode(simbol)
+
+        req = {
+            "action":        mt5.TRADE_ACTION_DEAL,
+            "symbol":        simbol,
+            "volume":        lot,
+            "type":          tipe_close,
+            "price":         harga_close,
+            "position":      tiket,
+            "magic":         self.magic_number,
+            "comment":       "TargetProfit",
+            "type_filling":  filling,
+        }
+
+        res = mt5.order_send(req)
+        if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+            profit = getattr(pos, "profit", 0.0)
+            return True, (
+                f"💰 TARGET PROFIT TERCAPAI — {simbol} | "
+                f"Profit: +${profit:.2f} | Tiket #{tiket}"
+            )
+        kode = res.retcode if res else "None"
+        return False, f"⚠️ Gagal close {simbol} — retcode: {kode}"
+
+    def _monitor_target_profit_cepat(self):
+        """
+        Pantau semua posisi terbuka dan tutup otomatis saat profit USD
+        menyentuh atau melampaui self.target_profit_usd.
+
+        Logika tiered berbasis saldo untuk akun berkembang:
+          Saldo < $15  → target $0.30
+          Saldo $15-30 → target $0.60
+          Saldo $30-60 → target $1.20
+          dst. (target naik proporsional seiring saldo tumbuh)
+        """
+        log = []
+        label_sim = " [SIM]" if MODE_SIMULASI else ""
+
+        if not self.target_profit_aktif:
+            return log
+
+        try:
+            semua_posisi = mt5.positions_get()
+        except Exception:
+            return log
+
+        if not semua_posisi:
+            return log
+
+        # Target dinamis berdasarkan saldo saat ini
+        saldo  = self._saldo_terakhir if self._saldo_terakhir > 0 else 7.5
+        target = self._hitung_target_profit_dinamis(saldo)
+
+        for pos in semua_posisi:
+            if pos.magic != self.magic_number:
+                continue
+
+            profit_float = getattr(pos, "profit", None)
+            if profit_float is None:
+                # Hitung manual dari harga jika pos.profit tidak tersedia
+                tick = mt5.symbol_info_tick(pos.symbol)
+                if not tick:
+                    continue
+                info = mt5.symbol_info(pos.symbol)
+                if not info:
+                    continue
+                pip_val = info.trade_tick_value
+                if pos.type == 0:   # BUY
+                    pip_diff   = (tick.bid - pos.price_open) / info.point
+                    profit_float = pip_diff * pip_val * pos.volume / info.trade_tick_size
+                else:               # SELL
+                    pip_diff   = (pos.price_open - tick.ask) / info.point
+                    profit_float = pip_diff * pip_val * pos.volume / info.trade_tick_size
+
+            if profit_float < target:
+                continue  # Belum mencapai target
+
+            sukses, pesan = self._tutup_posisi(pos)
+            pesan += label_sim
+            log.append(pesan)
+
+            if sukses:
+                # Catat ke P&L harian
+                self._pnl_hari_ini     += profit_float
+                self._trade_hari_ini   += 1
+                self._saldo_terakhir   += profit_float
+                self._catat_ekuitas(self._saldo_terakhir)
+
+        return log
+
+    def _hitung_target_profit_dinamis(self, saldo):
+        """
+        Target profit per trade tumbuh proporsional dengan saldo.
+        Basis: TARGET_PROFIT_USD untuk saldo awal $7.50.
+        Naik otomatis saat saldo berkembang — fitur kompounding.
+        """
+        saldo_basis = self._saldo_awal_modal if self._saldo_awal_modal > 0 else 7.5
+        # Skala linier: target naik proporsional dengan pertumbuhan saldo
+        faktor = saldo / saldo_basis if saldo_basis > 0 else 1.0
+        # Batasi faktor agar tidak terlalu agresif (maks 5× dari target awal)
+        faktor = min(faktor, 5.0)
+        return round(self.target_profit_usd * faktor, 4)
+
+    # ══════════════════════════════════════════════════════
     #  FILLING MODE
     # ══════════════════════════════════════════════════════
 
@@ -767,6 +904,9 @@ class ArgenBotPro:
                 f"({self._trade_hari_ini} trade) — menunggu hari berikutnya"
             )
             return log
+
+        # Target Profit Cepat — auto-close saat profit USD tercapai
+        log.extend(self._monitor_target_profit_cepat())
 
         # Trailing stop — jalankan setiap siklus scan
         log.extend(self._monitor_trailing_stop())
