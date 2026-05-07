@@ -1,0 +1,164 @@
+## KONTEKS PROYEK
+
+Saya memiliki bot trading bernama **ArgenFlow V5 Pro** yang berjalan di **Replit**.
+Bot ini menggunakan:
+- Bahasa: Python 3.11+
+- Framework: FastAPI (untuk web dashboard)
+- Library utama: MetaTrader5, uvicorn, asyncio
+- Struktur: `main.py` (server web + loop utama), `bot_engine.py` (logika trading), `ai_manager.py` (manajemen risiko & berita)
+
+## TUJUAN UPDATE
+
+Tolong tuliskan kode UPDATE untuk bot saya dengan spesifikasi berikut:
+
+### 1. KONFIGURASI MODAL KECIL ($5–$10)
+- Tambahkan validasi otomatis untuk modal kecil
+- Jika saldo akun < $15, aktifkan **mode konservatif** (risk 0.5% per trade, lot maks 0.01)
+- Batasi maksimal posisi terbuka: 1 (satu posisi saja)
+- Stop loss WAJIB ada, minimal 15 poin, maksimal 30 poin
+
+### 2. PARAMETER SCALPING (KUSTOMISABLE)
+Buat parameter input berikut di bagian atas `bot_engine.py`:
+
+```python
+# Modal Kecil (aktif jika balance < $15)
+MODE_MODAL_KECIL_AKTIF = True
+RISIKO_PERSEN_MODAL_KECIL = 0.5     # 0.5% per trade
+LOT_MAX_MODAL_KECIL = 0.01          # micro lot
+MAX_POSISI_MODAL_KECIL = 1
+
+# Scalping Parameters
+SCAN_INTERVAL_DETIK = 3             # interval cek harga (detik)
+MIN_PROFIT_POIN = 15                # minimal profit sebelum trailing
+TRAILING_STOP_POIN = 10             # aktifkan trailing setelah profit > MIN_PROFIT
+SL_FIXED_POIN = 20                  # stop loss fixed (poin)
+TP_FIXED_POIN = 40                  # take profit fixed (poin, rasio 1:2)
+
+# Filter Keamanan
+MAX_SPREAD_POIN = 20                # maksimal spread (2 pip)
+MAKSIMAL_RUGI_HARIAN_PERSEN = 10    # stop semua trading jika loss >10%/hari
+HINDARI_NEWS_MENIT = 30             # jeda sebelum/sesudah berita tinggi (menit)
+```
+
+### 3. TAMBAHKAN FUNGSI DI `bot_engine.py`
+
+#### a) Safety Validator
+```python
+def cek_keamanan_modal_kecil(self):
+    """Ceck apakah modal kecil dan ubah parameter otomatis"""
+    if self.saldo < 15:
+        self.mode_modal_kecil = True
+        self.risiko_pct = RISIKO_PERSEN_MODAL_KECIL
+        self.lot = LOT_MAX_MODAL_KECIL
+        self.max_positions = MAX_POSISI_MODAL_KECIL
+        self.log(f"[SAFETY] Mode Modal Kecil AKTIF | Saldo: ${self.saldo}")
+        return True
+    return False
+```
+
+#### b) Perhitungan Lot Berbasis Risiko
+```python
+def hitung_lot(self, sl_poin):
+    """Hitung lot berdasarkan risk % equity"""
+    if self.mode_modal_kecil:
+        return self.lot  # fixed lot untuk modal kecil
+    
+    # Risk-based lot sizing
+    risiko_usd = self.saldo * (self.risiko_pct / 100)
+    nilai_per_poin = self.hitung_nilai_per_poin()
+    lot = risiko_usd / (sl_poin * nilai_per_poin)
+    return round(min(lot, self.lot_maks), 2)
+```
+
+#### c) Filter Spread & Waktu
+```python
+def cek_filter(self, symbol):
+    spread = mt5.symbol_info(symbol).spread
+    if spread > MAX_SPREAD_POIN:
+        self.log(f"[SKIP] Spread {spread} poin > {MAX_SPREAD_POIN} (skip)")
+        return False
+    
+    if self.ada_berita_high_impact(HINDARI_NEWS_MENIT):
+        self.log(f"[SKIP] Ada berita tinggi dalam {HINDARI_NEWS_MENIT} menit")
+        return False
+    
+    return True
+```
+
+#### d) Trailing Stop Otomatis
+```python
+def update_trailing_stop(self, posisi):
+    profit_poin = (posisi.price_current - posisi.price_open) / self.poin_value
+    if profit_poin >= MIN_PROFIT_POIN:
+        if not posisi.trailing_aktif:
+            posisi.trailing_aktif = True
+            posisi.sl_trailing = profit_poin - TRAILING_STOP_POIN
+        else:
+            new_sl = profit_poin - TRAILING_STOP_POIN
+            if new_sl > posisi.sl_trailing:
+                self.modifikasi_sl(posisi, new_sl)
+```
+
+### 4. UPDATE `main.py` (INTERVAL & STATUS)
+- Ubah `INTERVAL_SCAN = 3` (dari 15 detik)
+- Tambahkan endpoint `/api/modal_kecil/status` untuk menampilkan apakah mode modal kecil aktif
+- Tampilkan di dashboard: lot saat ini, SL, TP, spread, dan sisa drawdown harian
+
+### 5. BUAT FILE REQUIREMENTS
+Buat file `requirements.txt` dengan isi:
+```
+fastapi==0.104.1
+uvicorn==0.24.0
+MetaTrader5==5.0.45
+python-dotenv==1.0.0
+pandas==2.1.3
+numpy==1.26.2
+```
+
+### 6. BUAT FILE `.env` (CONTOH)
+```
+MT5_DEMO=true
+MT5_LOGIN=12345678
+MT5_PASSWORD=password_anda
+MT5_SERVER=Exness-Demo
+PORT=5000
+```
+
+### 7. DEPLOYMENT DI REPLIT
+- Beri instruksi cara menjalankan bot di Replit (termasuk install dependencies, set environment variables, dan keep-alive)
+- Sertakan kode untuk `keep_alive.py` (ping endpoint setiap 5 menit agar bot tidak tidur)
+
+### 8. YANG TIDAK PERLU DIUBAH
+- Struktur dashboard statis (folder `static/`) tetap dipertahankan
+- Fungsi `ai_manager.py` tidak perlu diubah (kecuali parameter news filter)
+- Mode simulasi untuk Termux/Linux tetap berfungsi
+
+## FORMAT OUTPUT YANG DIINGINKAN
+
+Tolong berikan kode dalam format:
+
+1. **Penjelasan singkat** (2-3 paragraf) tentang perubahan utama
+2. **Kode lengkap `bot_engine.py`** yang sudah diupdate
+3. **Potongan kode `main.py`** yang berubah (hanya bagian yang dimodifikasi)
+4. **File `keep_alive.py`** untuk Replit
+5. **Panduan menjalankan di Replit** (langkah demi langkah)
+
+## PRIORITAS UTAMA
+
+- ✅ Safety untuk modal $5–10 (jangan sampai margin call)
+- ✅ Bot berjalan 24/7 di Replit (dengan keep-alive)
+- ✅ Parameter mudah diubah tanpa restart
+- ✅ Dashboard menampilkan informasi real-time (lot, SL, spread, drawdown)
+
+---
+
+### TAMBAHAN SPESIFIK SAYA:
+
+- Pair yang akan ditradingkan: **EURUSD** dan **GBPUSD** saja (spread rendah)
+- Waktu trading: **London session (14:00-23:00 WIB)** dan **New York session (20:00-05:00 WIB)**
+- Hindari trading hari Jumat (spread melebar jelang akhir pekan)
+- Jika akun turun 5% dalam 1 jam, bot pause selama 1 jam
+```
+
+---
+
