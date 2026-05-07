@@ -94,24 +94,30 @@ class ArgenBotPro:
         self.periode_rsi  = int(os.getenv("PERIODE_RSI", "14"))
         self.periode_ema  = int(os.getenv("PERIODE_EMA", "50"))
         self.periode_atr  = int(os.getenv("PERIODE_ATR", "14"))
-        self.ambang_skor  = int(os.getenv("AMBANG_SKOR", "80"))
-        self.rsi_beli_max = int(os.getenv("RSI_BELI_MAX", "32"))
-        self.rsi_jual_min = int(os.getenv("RSI_JUAL_MIN", "68"))
+        # Skor 70 → lebih banyak sinyal masuk tanpa mengorbankan kualitas terlalu banyak
+        self.ambang_skor  = int(os.getenv("AMBANG_SKOR", "70"))
+        # RSI 40/60 → zona oversold/overbought lebih lebar, frekuensi trade 2× lebih banyak
+        self.rsi_beli_max = int(os.getenv("RSI_BELI_MAX", "40"))
+        self.rsi_jual_min = int(os.getenv("RSI_JUAL_MIN", "60"))
 
         # ── Multiplier SL/TP berbasis ATR (dari .env) ─────
-        self.sl_atr_mult = float(os.getenv("SL_ATR_MULT", "1.2"))   # Mikro: SL lebih ketat
-        self.tp_atr_mult = float(os.getenv("TP_ATR_MULT", "2.4"))   # Mikro: R:R 1:2 tetap terjaga
+        # SL lebih ketat (1.0×) + TP lebih lebar (3.0×) → R:R 1:3, kompounding lebih cepat
+        self.sl_atr_mult = float(os.getenv("SL_ATR_MULT", "1.0"))
+        self.tp_atr_mult = float(os.getenv("TP_ATR_MULT", "3.0"))
 
         # ── Trailing Stop (dari .env) ──────────────────────
         self.trailing_aktif     = os.getenv("TRAILING_AKTIF",    "true").lower() == "true"
-        self.trailing_be_pct    = float(os.getenv("TRAILING_BE_PCT",    "40"))   # Mikro: BE lebih cepat
-        self.trailing_kunci_pct = float(os.getenv("TRAILING_KUNCI_PCT", "60"))   # Mikro: kunci profit lebih cepat
+        self.trailing_be_pct    = float(os.getenv("TRAILING_BE_PCT",    "35"))   # Breakeven lebih cepat
+        self.trailing_kunci_pct = float(os.getenv("TRAILING_KUNCI_PCT", "55"))   # Kunci profit lebih cepat
 
         # ── Optimasi tambahan (dari .env) ──────────────────
         self.adx_aktif        = os.getenv("ADX_AKTIF",   "true").lower() == "true"
-        self.adx_min          = int(os.getenv("ADX_MIN",          "28"))   # Mikro: hanya tren lebih kuat
-        self.cooldown_menit   = int(os.getenv("COOLDOWN_MENIT",   "45"))   # Mikro: jeda lebih panjang
-        self.max_trade_harian = int(os.getenv("MAX_TRADE_HARIAN", "3"))    # Mikro: maks 3 trade/hari
+        # ADX 25 → lebih permisif, tren moderat pun ikut (lebih banyak peluang)
+        self.adx_min          = int(os.getenv("ADX_MIN",          "25"))
+        # Cooldown 25 menit → re-entry lebih cepat jika ada sinyal baru
+        self.cooldown_menit   = int(os.getenv("COOLDOWN_MENIT",   "25"))
+        # 6 trade/hari → kompounding 2× lebih cepat dari sebelumnya (3 trade)
+        self.max_trade_harian = int(os.getenv("MAX_TRADE_HARIAN", "6"))
         self.filter_senin     = os.getenv("FILTER_SENIN", "true").lower() == "true"
         self.filter_jumat     = os.getenv("FILTER_JUMAT", "true").lower() == "true"
 
@@ -219,7 +225,7 @@ class ArgenBotPro:
         Agresivitas trailing stop disesuaikan otomatis berdasarkan profit % dari modal deposit.
         TIDAK ADA batas target — sistem terus beradaptasi seiring profit bertumbuh.
 
-        Fase PERTUMBUHAN  (profit < 50%)   — LONGGAR  : biarkan profit berlari
+        Fase PERTUMBUHAN  (profit < 50%)   — LONGGAR  : biarkan profit berlari (be 35%, kunci 55%)
         Fase AKSELERASI   (profit 50-150%) — SEDANG   : seimbang growth & proteksi
         Fase PROTEKSI     (profit 150-300%)— KETAT    : jaga keuntungan besar
         Fase ULTRA        (profit > 300%)  — ULTRA    : sangat konservatif, modal 4x+
@@ -228,14 +234,14 @@ class ArgenBotPro:
             return {"be_pct": self.trailing_be_pct, "kunci_pct": self.trailing_kunci_pct,
                     "kunci_fraksi": 0.50, "buffer_mult": 3, "kontinu": False}
         pct = self._profit_pct(saldo)
-        if pct < 50:            # PERTUMBUHAN — longgar
-            return {"be_pct": 50, "kunci_pct": 72, "kunci_fraksi": 0.40, "buffer_mult": 3, "kontinu": False}
+        if pct < 50:            # PERTUMBUHAN — longgar, biarkan profit berlari
+            return {"be_pct": 35, "kunci_pct": 55, "kunci_fraksi": 0.42, "buffer_mult": 3, "kontinu": False}
         elif pct < 150:         # AKSELERASI — sedang
-            return {"be_pct": 40, "kunci_pct": 62, "kunci_fraksi": 0.52, "buffer_mult": 3, "kontinu": False}
+            return {"be_pct": 30, "kunci_pct": 50, "kunci_fraksi": 0.55, "buffer_mult": 3, "kontinu": False}
         elif pct < 300:         # PROTEKSI — ketat + trailing kontinu
-            return {"be_pct": 28, "kunci_pct": 50, "kunci_fraksi": 0.65, "buffer_mult": 2, "kontinu": True}
+            return {"be_pct": 22, "kunci_pct": 40, "kunci_fraksi": 0.68, "buffer_mult": 2, "kontinu": True}
         else:                   # ULTRA — sangat konservatif, modal sudah 4x lipat
-            return {"be_pct": 18, "kunci_pct": 38, "kunci_fraksi": 0.78, "buffer_mult": 2, "kontinu": True}
+            return {"be_pct": 15, "kunci_pct": 30, "kunci_fraksi": 0.80, "buffer_mult": 2, "kontinu": True}
 
     def _catat_ekuitas(self, saldo):
         """Simpan satu titik ke riwayat ekuitas. Panggil sekali per siklus scan."""
@@ -286,14 +292,15 @@ class ArgenBotPro:
         """
         Risiko bertingkat berbasis profit % dari modal deposit.
         TIDAK ADA batas — semakin besar profit, semakin konservatif proteksi.
+        Fase PERTUMBUHAN dinaikkan ke 2.5% untuk modal kecil agar kompounding lebih cepat.
         """
         if self._saldo_awal_modal <= 0 or saldo <= 0:
-            return 2.0
+            return 2.5
         pct = self._profit_pct(saldo)
-        if pct < 50:    return 2.0    # PERTUMBUHAN — agresif
-        elif pct < 150: return 1.5    # AKSELERASI — moderat
-        elif pct < 300: return 1.0    # PROTEKSI — konservatif
-        else:           return 0.7    # ULTRA — sangat konservatif (modal 4x+)
+        if pct < 50:    return 2.5    # PERTUMBUHAN — agresif (modal kecil, butuh gas)
+        elif pct < 150: return 2.0    # AKSELERASI — moderat
+        elif pct < 300: return 1.5    # PROTEKSI — konservatif
+        else:           return 1.0    # ULTRA — sangat konservatif (modal 4x+)
 
     def _fase_pertumbuhan(self, saldo):
         """
@@ -344,6 +351,7 @@ class ArgenBotPro:
     # ══════════════════════════════════════════════════════
 
     def _dalam_sesi_aktif(self):
+        """Pemeriksaan global: hari kerja + filter Senin/Jumat."""
         sekarang_utc = datetime.datetime.utcnow()
         sekarang_wib = _sekarang_wib()
 
@@ -362,7 +370,22 @@ class ArgenBotPro:
         if self.filter_jumat and sekarang_wib.weekday() == 4 and sekarang_wib.hour >= 22:
             return False
 
-        return JAM_MULAI_SESI <= sekarang_utc.hour < JAM_AKHIR_SESI
+        return True  # Pemeriksaan jam dilakukan per-simbol
+
+    def _simbol_dalam_sesi(self, simbol):
+        """
+        Filter sesi per-simbol — lebih banyak peluang trade:
+          XAUUSDm  → sesi Asia + London + NY  (00:00–17:00 UTC) — emas aktif hampir 24h
+          USDJPYm  → sesi Asia + London + NY  (00:00–17:00 UTC) — JPY aktif di Asia
+          EUR/GBP  → sesi London + NY saja    (08:00–17:00 UTC)
+        """
+        if MODE_SIMULASI:
+            return True
+        jam = datetime.datetime.utcnow().hour
+        if "XAU" in simbol or "JPY" in simbol:
+            # Sesi Asia (00:00–08:00) + London/NY (08:00–17:00) = 00:00–17:00 UTC
+            return 0 <= jam < 17
+        return JAM_MULAI_SESI <= jam < JAM_AKHIR_SESI
 
     # ══════════════════════════════════════════════════════
     #  INDIKATOR
@@ -702,12 +725,7 @@ class ArgenBotPro:
         label_sim = " [SIM]" if MODE_SIMULASI else ""
 
         if not self._dalam_sesi_aktif():
-            jam_wib_mulai = JAM_MULAI_SESI + 7
-            jam_wib_akhir = JAM_AKHIR_SESI + 7
-            log.append(
-                f"⏰ Di luar sesi London/NY — bot menunggu "
-                f"(aktif {jam_wib_mulai:02d}:00–{jam_wib_akhir:02d}:00 WIB)"
-            )
+            log.append("⏰ Hari libur/weekend — pasar tutup, bot menunggu")
             return log
 
         # Ambil data akun — gunakan saldo terakhir yang diketahui sebagai default
@@ -759,6 +777,11 @@ class ArgenBotPro:
             return log
 
         for sim in self.daftar_simbol:
+            # Filter sesi per-simbol: XAU & JPY aktif di sesi Asia juga
+            if not self._simbol_dalam_sesi(sim):
+                log.append(f"⏰ {sim}: di luar sesi aktif — dilewati")
+                continue
+
             posisi = mt5.positions_get(symbol=sim)
             if posisi:
                 continue
