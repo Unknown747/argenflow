@@ -37,9 +37,13 @@ except Exception as e:
     BOT_TERSEDIA = False
     print(f"[PERINGATAN] Gagal memuat bot: {e}")
 
-MODE_DEMO     = os.getenv("MT5_DEMO", "true").lower() == "true"
-PORT          = int(os.getenv("PORT", "5000"))
-INTERVAL_SCAN = 3.0   # Scalping: scan setiap 3 detik
+MODE_DEMO = os.getenv("MT5_DEMO", "true").lower() == "true"
+PORT      = int(os.getenv("PORT", "5000"))
+
+try:
+    from bot_engine import SCAN_INTERVAL_DETIK as INTERVAL_SCAN
+except Exception:
+    INTERVAL_SCAN = 3.0
 
 pesan_ui: list[str] = []
 

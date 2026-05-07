@@ -21,6 +21,8 @@ Semua optimasi aktif:
 
 import os
 import csv
+import time
+import random
 import datetime
 from dotenv import load_dotenv
 from ai_manager import AIManager
@@ -81,16 +83,13 @@ LOT_MAX_MODAL_KECIL       = 0.01   # micro lot
 MAX_POSISI_MODAL_KECIL    = 1      # maks 1 posisi terbuka sekaligus
 
 # Scalping
-SCAN_INTERVAL_DETIK = 3            # interval scan (detik) — dipakai di main.py
-MIN_PROFIT_POIN     = 15           # minimal profit sebelum trailing (poin)
-TRAILING_STOP_POIN  = 10           # trailing aktif setelah profit > MIN_PROFIT_POIN
-SL_FIXED_POIN       = 20           # SL default (poin) — 15–30 range
-TP_FIXED_POIN       = 40           # TP default (poin) — rasio 1:2
+SCAN_INTERVAL_DETIK = 3   # interval scan (detik) — diimpor di main.py via SCAN_INTERVAL_DETIK
+SL_FIXED_POIN       = 20  # SL clamp bawah (poin) di mode modal kecil — lihat escanear_normal
+TP_FIXED_POIN       = 40  # TP = 2× SL_FIXED_POIN (rasio 1:2)
 
 # Filter Keamanan
 MAX_SPREAD_POIN             = 20   # maks spread yang diizinkan (2 pip)
 MAKSIMAL_RUGI_HARIAN_PERSEN = 10   # stop trading jika loss > 10%/hari
-HINDARI_NEWS_MENIT          = 30   # jeda sebelum/sesudah berita tinggi (menit)
 PAUSE_RUGI_1JAM_PERSEN      = 5.0  # pause 1 jam jika loss > 5% dalam 1 jam
 
 # Simbol aktif — EURUSD & GBPUSD saja (spread rendah, sesi London/NY optimal)
@@ -114,8 +113,8 @@ class ArgenBotPro:
         self.risiko_pct          = float(os.getenv("RISIKO_PCT",      "1.0"))
         self.max_lot             = float(os.getenv("MAX_LOT",         "0.01"))   # Mikro: maks 0.01 lot
         self.min_lot             = float(os.getenv("MIN_LOT",         "0.01"))
-        self.max_rugi_harian_pct = float(os.getenv("MAX_RUGI_HARIAN", "2.0"))   # Mikro: batas rugi 2%/hari
-        self.max_spread          = int(os.getenv("MAX_SPREAD",        "25"))     # Mikro: sedikit longgar untuk GBP
+        self.max_rugi_harian_pct = float(os.getenv("MAX_RUGI_HARIAN", str(MAKSIMAL_RUGI_HARIAN_PERSEN)))
+        self.max_spread          = int(os.getenv("MAX_SPREAD",        str(MAX_SPREAD_POIN)))
 
         # ── Target Profit Cepat — auto-close saat profit menyentuh target ──
         # Misal: masuk $1 risiko → close otomatis saat profit USD tercapai
@@ -179,11 +178,15 @@ class ArgenBotPro:
         self._batas_rugi_aktif = False
         self._cooldown_simbol  = {}   # simbol → datetime WIB terakhir order dibuka
 
+        # ── Nilai asli parameter (untuk restore dari mode modal kecil) ─
+        self._max_lot_original    = float(os.getenv("MAX_LOT",    "0.01"))
+        self._max_spread_original = int(os.getenv("MAX_SPREAD",   str(MAX_SPREAD_POIN)))
+
         # ── Riwayat ekuitas (equity curve) ────────────────
         # Setiap elemen: {"t": "HH:MM WIB", "b": float, "ts": epoch_ms}
-        # Max 300 titik — cukup untuk beberapa hari sesi trading
+        # 1200 titik @ 3 detik/titik = 60 menit riwayat saat scalping
         self._riwayat_ekuitas: list = []
-        self._MAX_RIWAYAT = 300
+        self._MAX_RIWAYAT = 1200
 
         # ── Mode Modal Kecil ───────────────────────────────
         self.mode_modal_kecil = False   # Di-set otomatis oleh cek_keamanan_modal_kecil()
@@ -287,7 +290,6 @@ class ArgenBotPro:
 
     def _catat_ekuitas(self, saldo):
         """Simpan satu titik ke riwayat ekuitas. Panggil sekali per siklus scan."""
-        import time
         sekarang = _sekarang_wib()
         titik = {
             "t":  sekarang.strftime("%d/%m %H:%M"),
@@ -300,7 +302,6 @@ class ArgenBotPro:
 
     def _seed_riwayat_simulasi(self, saldo_awal):
         """Buat beberapa titik awal realistis untuk mode simulasi (agar chart tidak kosong)."""
-        import time, random
         random.seed(42)
         sekarang = _sekarang_wib()
         titik_seed = 20
@@ -621,15 +622,24 @@ class ArgenBotPro:
     # ══════════════════════════════════════════════════════
 
     def cek_keamanan_modal_kecil(self, saldo):
-        """Cek apakah modal kecil dan ubah parameter otomatis."""
+        """
+        Cek apakah modal kecil dan ubah parameter otomatis.
+        Jika saldo naik di atas batas, kembalikan parameter ke nilai asli.
+        """
         if saldo < BATAS_MODAL_KECIL:
+            if not self.mode_modal_kecil:
+                print(f"[SAFETY] Mode Modal Kecil AKTIF | Saldo: ${saldo:.2f}")
             self.mode_modal_kecil = True
             self.risiko_pct       = RISIKO_PERSEN_MODAL_KECIL
             self.max_lot          = LOT_MAX_MODAL_KECIL
             self.max_spread       = MAX_SPREAD_POIN
             return True
         else:
+            if self.mode_modal_kecil:
+                print(f"[SAFETY] Mode Modal Kecil DINONAKTIFKAN | Saldo: ${saldo:.2f}")
             self.mode_modal_kecil = False
+            self.max_lot          = self._max_lot_original
+            self.max_spread       = self._max_spread_original
             return False
 
     # ══════════════════════════════════════════════════════
@@ -1221,7 +1231,7 @@ class ArgenBotPro:
             if res and res.retcode == mt5.TRADE_RETCODE_DONE:
                 self._trade_hari_ini += 1
                 self._set_cooldown(sim)
-                rr = round(self.tp_atr_mult / self.sl_atr_mult, 1)
+                rr = round(tp_pips / sl_pips, 1) if sl_pips > 0 else 0.0
                 log.append(
                     f"✅ {arah_signal}{label_sim} — {sim} | "
                     f"Skor {skor}/{ambang} | RSI {rsi_val} | ATR {atr_pips} | "
