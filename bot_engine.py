@@ -27,6 +27,7 @@ import random
 import datetime
 from dotenv import load_dotenv
 from ai_manager import AIManager
+import telegram_notif
 
 load_dotenv()
 
@@ -1016,6 +1017,11 @@ class ArgenBotPro:
                 # Update win/loss counter & simpan stats harian
                 self._update_hasil_trade(profit)
                 self._simpan_daily_stats()
+                # Notifikasi Telegram
+                telegram_notif.notif_trade_tutup(
+                    simbol, alasan, profit, self._pnl_hari_ini,
+                    "SIM" if MODE_SIMULASI else "REAL"
+                )
 
         return log
 
@@ -1131,6 +1137,11 @@ class ArgenBotPro:
                 # Update win/loss counter & simpan stats harian
                 self._update_hasil_trade(profit_float)
                 self._simpan_daily_stats()
+                # Notifikasi Telegram
+                telegram_notif.notif_trade_tutup(
+                    pos.symbol, "Target Profit", profit_float, self._pnl_hari_ini,
+                    "SIM" if MODE_SIMULASI else "REAL"
+                )
 
         return log
 
@@ -1245,6 +1256,9 @@ class ArgenBotPro:
                 print(
                     f"[SAFETY] {MAX_LOSS_BERTURUT_TURUT}× loss beruntun — pause sampai "
                     f"{self._pause_consecutive_hingga.strftime('%H:%M WIB')}"
+                )
+                telegram_notif.notif_consecutive_loss(
+                    MAX_LOSS_BERTURUT_TURUT, PAUSE_BERUNTUN_MENIT
                 )
 
     def _simpan_state(self):
@@ -1423,10 +1437,12 @@ class ArgenBotPro:
         boleh_buka, harus_shutdown, pesan_floor = self._cek_ekuitas_floor(ekuitas)
         if harus_shutdown:
             log.append(pesan_floor)
+            telegram_notif.notif_equity_floor(ekuitas, MIN_EKUITAS_SHUTDOWN, True)
             self.is_running = False
             return log
         if not boleh_buka:
             log.append(pesan_floor)
+            telegram_notif.notif_equity_floor(ekuitas, STOP_TRADE_EKUITAS_MIN, False)
             return log
 
         # ── Validasi Modal Kecil ──────────────────────────
@@ -1455,6 +1471,8 @@ class ArgenBotPro:
                 f"🛑 Batas rugi harian {self.max_rugi_harian_pct}% tercapai "
                 f"(P&L: {self._pnl_hari_ini:+.2f} USD) — bot berhenti hari ini"
             )
+            pct_rugi = (abs(self._pnl_hari_ini) / self._saldo_awal_hari * 100) if self._saldo_awal_hari > 0 else 0.0
+            telegram_notif.notif_hard_stop(self._pnl_hari_ini, pct_rugi)
             self.is_running = False
             return log
 
@@ -1649,6 +1667,12 @@ class ArgenBotPro:
                     f"Lot {lot} | SL {sl_pips:.0f}p | TP {tp_pips:.0f}p | R:R 1:{rr}"
                 )
                 self._catat_order(sim, arah_signal, harga, res.order, skor, lot, sl_pips, tp_pips)
+                # Notifikasi Telegram
+                telegram_notif.notif_trade_buka(
+                    sim, arah_signal, harga, lot,
+                    sl_pips, tp_pips, skor, rr,
+                    "SIM" if MODE_SIMULASI else "REAL"
+                )
             else:
                 kode = res.retcode if res else "None"
                 log.append(f"❌ {arah_signal} ditolak {sim} — retcode: {kode}")

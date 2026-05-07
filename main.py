@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, Response
 import uvicorn
 import os
 import asyncio
+import telegram_notif
 
 try:
     import MetaTrader5 as mt5
@@ -160,6 +161,7 @@ async def status():
         "new_logs":         log_dikirim,
         "mt5_available":    MT5_TERSEDIA,
         "statistik":        statistik,
+        "telegram_aktif":   telegram_notif.terkonfigurasi(),
     }
 
 
@@ -184,8 +186,13 @@ async def toggle(active: bool):
             f"Risiko {bot.risiko_pct}%/trade | "
             f"Batas rugi {bot.max_rugi_harian_pct}%/hari"
         )
+        # Notifikasi Telegram: bot mulai
+        mode_label = f"{tipe}{label}"
+        telegram_notif.notif_bot_mulai(bot._saldo_terakhir, mode_label)
     else:
         pesan_ui.append("🔴 Bot dihentikan secara manual")
+        # Notifikasi Telegram: bot berhenti
+        telegram_notif.notif_bot_stop("Manual")
     return {"status": "ok", "bot_active": bot.is_running}
 
 
@@ -317,6 +324,8 @@ async def emergency_stop(password: str = ""):
     pesan_ui.append(
         f"🚨 EMERGENCY STOP — bot dihentikan | {len(posisi_ditutup)} posisi ditutup"
     )
+    # Notifikasi Telegram: emergency stop
+    telegram_notif.notif_emergency_stop(len(posisi_ditutup))
     return {
         "status":         "emergency_stopped",
         "posisi_ditutup": posisi_ditutup,
