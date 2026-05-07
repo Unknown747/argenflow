@@ -85,7 +85,7 @@ sudo apt-get install -y python3 python3-pip git
 # sudo yum install -y python3 python3-pip git
 
 # Clone repositori
-git clone https://github.com/username/argenflow.git
+git clone https://github.com/Unknown747/argenflow.git
 cd argenflow
 
 # Instal dependensi Python
@@ -109,7 +109,7 @@ pkg update -y && pkg upgrade -y
 pkg install python git -y
 
 # 4. Clone repositori
-git clone https://github.com/username/argenflow.git
+git clone https://github.com/Unknown747/argenflow.git
 cd argenflow
 
 # 5. Instal dependensi
@@ -124,7 +124,7 @@ python main.py
 ```bash
 # Alternatif tanpa git
 pkg install unzip wget -y
-wget https://github.com/username/argenflow/archive/main.zip
+wget https://github.com/Unknown747/argenflow/archive/main.zip
 unzip main.zip
 cd argenflow-main
 pip install -r requirements.txt
