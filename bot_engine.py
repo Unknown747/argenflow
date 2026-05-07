@@ -21,6 +21,7 @@ Semua optimasi aktif:
 
 import os
 import csv
+import json
 import time
 import random
 import datetime
@@ -97,6 +98,37 @@ PAUSE_RUGI_1JAM_PERSEN      = 5.0  # pause 1 jam jika loss > 5% dalam 1 jam
 
 # Simbol aktif — EURUSD & GBPUSD saja (spread rendah, sesi London/NY optimal)
 SIMBOL_AKTIF = ["EURUSDm", "GBPUSDm"]
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  FITUR P.TXT — SAFETY NET TAMBAHAN
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Hard stop total jika loss > 20%/hari (lebih berat dari soft stop 10%)
+HARD_STOP_HARIAN_PERSEN   = 20
+
+# Pause 1 jam jika loss N× berturut-turut
+MAX_LOSS_BERTURUT_TURUT   = 3
+PAUSE_BERUNTUN_MENIT      = 60
+
+# Proteksi ekuitas mutlak
+MIN_EKUITAS_SHUTDOWN      = 2.0   # shutdown total jika ekuitas < $2
+STOP_TRADE_EKUITAS_MIN    = 3.0   # tolak posisi baru jika ekuitas < $3
+
+# Broker protection — spread multiplier
+SPREAD_WARNING_MULT       = 3     # peringatan jika spread > 3× referensi normal
+SPREAD_SAFETY_MULT        = 5     # stop trading jika spread > 5× referensi normal
+
+# Jam blackout UTC disimpan sebagai (menit_mulai, menit_selesai)
+# 23:00–00:30 = rollover/swap; 04:50–05:10 = akhir sesi Asia
+JAM_BLACKOUT_UTC = [
+    (23 * 60,       30),          # 23:00–00:30 UTC
+    (4 * 60 + 50,   5 * 60 + 10), # 04:50–05:10 UTC
+]
+
+# State & Stats Recovery (Section 12 & 11)
+STATE_FILE       = "bot_state.json"
+DAILY_STATS_FILE = "daily_stats.json"
+SAVE_STATE_DETIK = 60   # simpan state setiap 60 detik
 
 
 class ArgenBotPro:
@@ -199,6 +231,17 @@ class ArgenBotPro:
         self._waktu_snapshot_1jam    = None
         self._pause_rugi_1jam_hingga = None   # datetime WIB — pause aktif hingga sini
 
+        # ── Safety Net Tambahan (p.txt §9-12) ─────────────
+        self._consecutive_losses     = 0      # hitungan loss berturut-turut
+        self._pause_consecutive_hingga = None  # datetime WIB pause loss beruntun
+        self._win_count              = 0
+        self._loss_count             = 0
+        self._total_profit_wins      = 0.0
+        self._total_loss_losses      = 0.0
+        self._max_drawdown_pct       = 0.0    # drawdown terbesar hari ini
+        self._last_state_save        = 0.0    # epoch terakhir simpan state
+        self._spread_normal_ref      = {}     # simbol → spread referensi pertama kali
+
         self.ai = AIManager()
         self._inisialisasi_log()
 
@@ -207,6 +250,9 @@ class ArgenBotPro:
             self._saldo_awal_modal = _SALDO_SIM_DEFAULT
             self._saldo_terakhir   = _SALDO_SIM_DEFAULT
             self._seed_riwayat_simulasi(_SALDO_SIM_DEFAULT)
+
+        # Muat state tersimpan (setelah seed, agar bisa override)
+        self._muat_state()
 
     # ══════════════════════════════════════════════════════
     #  KONEKSI
@@ -246,17 +292,27 @@ class ArgenBotPro:
     def _reset_tracker_harian(self, saldo):
         hari_ini = _sekarang_wib().date()
         if self._tanggal_hari != hari_ini:
-            self._tanggal_hari     = hari_ini
-            self._saldo_awal_hari  = saldo
-            self._trade_hari_ini   = 0
-            self._pnl_hari_ini     = 0.0
-            self._batas_rugi_aktif = False
+            self._tanggal_hari          = hari_ini
+            self._saldo_awal_hari       = saldo
+            self._trade_hari_ini        = 0
+            self._pnl_hari_ini          = 0.0
+            self._batas_rugi_aktif      = False
+            # Reset statistik harian
+            self._consecutive_losses    = 0
+            self._win_count             = 0
+            self._loss_count            = 0
+            self._total_profit_wins     = 0.0
+            self._total_loss_losses     = 0.0
+            self._max_drawdown_pct      = 0.0
 
     def _cek_batas_rugi_harian(self, ekuitas):
         if self._saldo_awal_hari <= 0:
             return True
         pnl_pct = ((ekuitas - self._saldo_awal_hari) / self._saldo_awal_hari) * 100
         self._pnl_hari_ini = round(ekuitas - self._saldo_awal_hari, 2)
+        # Lacak drawdown maksimum hari ini
+        if pnl_pct < 0:
+            self._max_drawdown_pct = max(self._max_drawdown_pct, abs(pnl_pct))
         if pnl_pct <= -self.max_rugi_harian_pct:
             self._batas_rugi_aktif = True
             return False
@@ -426,6 +482,31 @@ class ArgenBotPro:
             "pause_rugi_1jam_aktif":  pause_1jam_aktif,
             "pause_rugi_1jam_sisa":   pause_1jam_sisa_menit,
             "simbol_aktif":           SIMBOL_AKTIF,
+            # ── Safety Net Tambahan (p.txt §9–12) ────────────
+            "consecutive_losses":     self._consecutive_losses,
+            "max_loss_berturut":      MAX_LOSS_BERTURUT_TURUT,
+            "pause_beruntun_aktif": (
+                self._pause_consecutive_hingga is not None
+                and _sekarang_wib() < self._pause_consecutive_hingga
+            ),
+            "pause_beruntun_sisa": (
+                max(0, int((self._pause_consecutive_hingga - _sekarang_wib()).total_seconds() / 60))
+                if self._pause_consecutive_hingga and _sekarang_wib() < self._pause_consecutive_hingga
+                else 0
+            ),
+            "win_count":              self._win_count,
+            "loss_count":             self._loss_count,
+            "win_rate_pct": round(
+                self._win_count / (self._win_count + self._loss_count) * 100, 1
+            ) if (self._win_count + self._loss_count) > 0 else 0.0,
+            "profit_factor": round(
+                self._total_profit_wins / self._total_loss_losses, 2
+            ) if self._total_loss_losses > 0 else 0.0,
+            "max_drawdown_pct":       round(self._max_drawdown_pct, 2),
+            "equity_floor_aktif":     0 < self._saldo_terakhir < STOP_TRADE_EKUITAS_MIN,
+            "hard_stop_persen":       HARD_STOP_HARIAN_PERSEN,
+            "stop_trade_ekuitas_min": STOP_TRADE_EKUITAS_MIN,
+            "min_ekuitas_shutdown":   MIN_EKUITAS_SHUTDOWN,
         }
 
     # ══════════════════════════════════════════════════════
@@ -932,6 +1013,9 @@ class ArgenBotPro:
                 self._trade_hari_ini += 1
                 self._saldo_terakhir += profit
                 self._catat_ekuitas(self._saldo_terakhir)
+                # Update win/loss counter & simpan stats harian
+                self._update_hasil_trade(profit)
+                self._simpan_daily_stats()
 
         return log
 
@@ -1044,6 +1128,9 @@ class ArgenBotPro:
                 self._trade_hari_ini   += 1
                 self._saldo_terakhir   += profit_float
                 self._catat_ekuitas(self._saldo_terakhir)
+                # Update win/loss counter & simpan stats harian
+                self._update_hasil_trade(profit_float)
+                self._simpan_daily_stats()
 
         return log
 
@@ -1059,6 +1146,221 @@ class ArgenBotPro:
         # Batasi faktor agar tidak terlalu agresif (maks 5× dari target awal)
         faktor = min(faktor, 5.0)
         return round(self.target_profit_usd * faktor, 4)
+
+    # ══════════════════════════════════════════════════════
+    #  SAFETY NET TAMBAHAN (p.txt §9–12)
+    # ══════════════════════════════════════════════════════
+
+    def _cek_blackout(self):
+        """Cek apakah sekarang dalam jam blackout spread lebar (rollover/akhir Asia). Selalu False di simulasi."""
+        if MODE_SIMULASI:
+            return False, ""
+        now_utc  = datetime.datetime.utcnow()
+        menit_sk = now_utc.hour * 60 + now_utc.minute
+        for (mulai, selesai) in JAM_BLACKOUT_UTC:
+            if mulai > selesai:   # melintas tengah malam (contoh: 23:00–00:30)
+                if menit_sk >= mulai or menit_sk < selesai:
+                    hm = f"{mulai//60:02d}:{mulai%60:02d}–{selesai//60:02d}:{selesai%60:02d}"
+                    return True, f"⏰ Blackout {hm} UTC (spread lebar/rollover) — dilewati"
+            else:
+                if mulai <= menit_sk < selesai:
+                    hm = f"{mulai//60:02d}:{mulai%60:02d}–{selesai//60:02d}:{selesai%60:02d}"
+                    return True, f"⏰ Blackout {hm} UTC — dilewati"
+        return False, ""
+
+    def _cek_ekuitas_floor(self, ekuitas):
+        """
+        Proteksi ekuitas mutlak.
+        Returns (boleh_buka_posisi: bool, harus_shutdown: bool, pesan: str)
+        """
+        if ekuitas <= 0:
+            return True, False, ""
+        if ekuitas < MIN_EKUITAS_SHUTDOWN:
+            return False, True, (
+                f"🚨 EMERGENCY SHUTDOWN: Ekuitas ${ekuitas:.2f} < batas minimum "
+                f"${MIN_EKUITAS_SHUTDOWN:.2f} — bot dihentikan untuk melindungi modal!"
+            )
+        if ekuitas < STOP_TRADE_EKUITAS_MIN:
+            return False, False, (
+                f"🛡 Proteksi Ekuitas: ${ekuitas:.2f} < ${STOP_TRADE_EKUITAS_MIN:.2f} "
+                f"— tidak ada posisi baru dibuka"
+            )
+        return True, False, ""
+
+    def _cek_spread_mult(self, simbol, spread):
+        """
+        Cek spread relatif terhadap referensi normal pertama kali dilihat.
+        Returns (aman: bool, pesan: str)
+        """
+        if MODE_SIMULASI or spread <= 0:
+            return True, ""
+        if simbol not in self._spread_normal_ref:
+            self._spread_normal_ref[simbol] = spread
+            return True, ""
+        ref  = self._spread_normal_ref[simbol]
+        if ref <= 0:
+            return True, ""
+        mult = spread / ref
+        if mult >= SPREAD_SAFETY_MULT:
+            return False, (
+                f"🚫 {simbol}: Spread {spread}pts = {mult:.1f}× normal "
+                f"(maks {SPREAD_SAFETY_MULT}×) — STOP (broker spread ekstrim)"
+            )
+        if mult >= SPREAD_WARNING_MULT:
+            pesan_warn = (
+                f"⚠️ {simbol}: Spread {spread}pts = {mult:.1f}× normal "
+                f"— peringatan, lanjut dengan hati-hati"
+            )
+            return True, pesan_warn
+        # Update referensi dengan rata-rata bergerak lambat
+        self._spread_normal_ref[simbol] = round(ref * 0.95 + spread * 0.05, 1)
+        return True, ""
+
+    def _cek_pause_consecutive_loss(self):
+        """Cek apakah bot sedang dipause karena loss berturut-turut."""
+        sekarang = _sekarang_wib()
+        if self._pause_consecutive_hingga and sekarang < self._pause_consecutive_hingga:
+            sisa = int((self._pause_consecutive_hingga - sekarang).total_seconds() / 60)
+            return False, (
+                f"⏳ Pause loss beruntun {MAX_LOSS_BERTURUT_TURUT}× — "
+                f"lanjut dalam {sisa} menit"
+            )
+        return True, ""
+
+    def _update_hasil_trade(self, profit: float):
+        """Update statistik menang/kalah setelah trade ditutup."""
+        if profit >= 0:
+            self._win_count          += 1
+            self._total_profit_wins  += profit
+            self._consecutive_losses  = 0   # reset jika menang
+        else:
+            self._loss_count             += 1
+            self._total_loss_losses      += abs(profit)
+            self._consecutive_losses     += 1
+            if self._consecutive_losses >= MAX_LOSS_BERTURUT_TURUT:
+                sekarang = _sekarang_wib()
+                self._pause_consecutive_hingga = sekarang + datetime.timedelta(
+                    minutes=PAUSE_BERUNTUN_MENIT
+                )
+                print(
+                    f"[SAFETY] {MAX_LOSS_BERTURUT_TURUT}× loss beruntun — pause sampai "
+                    f"{self._pause_consecutive_hingga.strftime('%H:%M WIB')}"
+                )
+
+    def _simpan_state(self):
+        """Simpan state bot ke JSON agar selamat dari restart Replit (Section 12)."""
+        now = time.time()
+        if now - self._last_state_save < SAVE_STATE_DETIK:
+            return
+        self._last_state_save = now
+        state = {
+            "ts":                  now,
+            "tanggal":             str(self._tanggal_hari),
+            "saldo_awal_hari":     self._saldo_awal_hari,
+            "saldo_awal_modal":    self._saldo_awal_modal,
+            "saldo_terakhir":      self._saldo_terakhir,
+            "trade_hari_ini":      self._trade_hari_ini,
+            "pnl_hari_ini":        self._pnl_hari_ini,
+            "batas_rugi_aktif":    self._batas_rugi_aktif,
+            "consecutive_losses":  self._consecutive_losses,
+            "win_count":           self._win_count,
+            "loss_count":          self._loss_count,
+            "total_profit_wins":   self._total_profit_wins,
+            "total_loss_losses":   self._total_loss_losses,
+            "max_drawdown_pct":    self._max_drawdown_pct,
+            "pause_consecutive": (
+                self._pause_consecutive_hingga.isoformat()
+                if self._pause_consecutive_hingga else None
+            ),
+            "pause_1jam": (
+                self._pause_rugi_1jam_hingga.isoformat()
+                if self._pause_rugi_1jam_hingga else None
+            ),
+        }
+        try:
+            with open(STATE_FILE, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+        except Exception as e:
+            print(f"[STATE] Gagal simpan state: {e}")
+
+    def _muat_state(self):
+        """Muat state dari JSON setelah restart Replit (Section 12)."""
+        try:
+            if not os.path.exists(STATE_FILE):
+                return
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                state = json.load(f)
+            hari_tersimpan = state.get("tanggal", "")
+            hari_ini       = str(_sekarang_wib().date())
+            if hari_tersimpan != hari_ini:
+                print("[STATE] State dari hari berbeda — tidak dimuat")
+                return
+            umur_detik = time.time() - state.get("ts", 0)
+            if umur_detik > 7200:   # state > 2 jam: abaikan
+                print(f"[STATE] State sudah {umur_detik/60:.0f} menit — diabaikan")
+                return
+            self._saldo_awal_hari      = state.get("saldo_awal_hari",   self._saldo_awal_hari)
+            self._saldo_awal_modal     = state.get("saldo_awal_modal",  self._saldo_awal_modal)
+            self._saldo_terakhir       = state.get("saldo_terakhir",    self._saldo_terakhir)
+            self._trade_hari_ini       = state.get("trade_hari_ini",    0)
+            self._pnl_hari_ini         = state.get("pnl_hari_ini",      0.0)
+            self._batas_rugi_aktif     = state.get("batas_rugi_aktif",  False)
+            self._consecutive_losses   = state.get("consecutive_losses", 0)
+            self._win_count            = state.get("win_count",          0)
+            self._loss_count           = state.get("loss_count",         0)
+            self._total_profit_wins    = state.get("total_profit_wins",  0.0)
+            self._total_loss_losses    = state.get("total_loss_losses",  0.0)
+            self._max_drawdown_pct     = state.get("max_drawdown_pct",   0.0)
+            if state.get("pause_consecutive"):
+                try:
+                    self._pause_consecutive_hingga = datetime.datetime.fromisoformat(
+                        state["pause_consecutive"]
+                    )
+                except Exception:
+                    pass
+            if state.get("pause_1jam"):
+                try:
+                    self._pause_rugi_1jam_hingga = datetime.datetime.fromisoformat(
+                        state["pause_1jam"]
+                    )
+                except Exception:
+                    pass
+            print(
+                f"[STATE] State dimuat: {self._trade_hari_ini} trade hari ini, "
+                f"P&L {self._pnl_hari_ini:+.2f} USD"
+            )
+        except Exception as e:
+            print(f"[STATE] Gagal muat state: {e}")
+
+    def _simpan_daily_stats(self):
+        """Simpan statistik harian ke JSON untuk evaluasi performa (Section 11)."""
+        try:
+            total = self._win_count + self._loss_count
+            win_rate      = (self._win_count / total * 100) if total > 0 else 0.0
+            avg_win       = (self._total_profit_wins / self._win_count) if self._win_count > 0 else 0.0
+            avg_loss      = (self._total_loss_losses / self._loss_count) if self._loss_count > 0 else 0.0
+            profit_factor = (
+                self._total_profit_wins / self._total_loss_losses
+                if self._total_loss_losses > 0 else 0.0
+            )
+            stats = {
+                "tanggal":          str(_sekarang_wib().date()),
+                "trade_count":      total,
+                "win_count":        self._win_count,
+                "loss_count":       self._loss_count,
+                "win_rate_pct":     round(win_rate, 1),
+                "total_pnl":        round(self._pnl_hari_ini, 4),
+                "avg_win":          round(avg_win, 4),
+                "avg_loss":         round(avg_loss, 4),
+                "profit_factor":    round(profit_factor, 2),
+                "max_drawdown_pct": round(self._max_drawdown_pct, 2),
+                "saldo_awal":       self._saldo_awal_hari,
+                "saldo_terakhir":   self._saldo_terakhir,
+            }
+            with open(DAILY_STATS_FILE, "w", encoding="utf-8") as f:
+                json.dump(stats, f, indent=2)
+        except Exception as e:
+            print(f"[STATS] Gagal simpan daily stats: {e}")
 
     # ══════════════════════════════════════════════════════
     #  FILLING MODE
@@ -1087,6 +1389,12 @@ class ArgenBotPro:
             log.append("⏰ Hari libur/weekend — pasar tutup, bot menunggu")
             return log
 
+        # ── Cek Jam Blackout (rollover/akhir Asia) ────────
+        blackout, pesan_blackout = self._cek_blackout()
+        if blackout:
+            log.append(pesan_blackout)
+            return log
+
         # Ambil data akun — gunakan saldo terakhir yang diketahui sebagai default
         saldo   = self._saldo_terakhir if self._saldo_terakhir > 0 else _SALDO_SIM_DEFAULT
         ekuitas = saldo
@@ -1105,6 +1413,16 @@ class ArgenBotPro:
         # Catat titik ekuitas untuk equity curve chart
         self._catat_ekuitas(saldo)
 
+        # ── Proteksi Ekuitas Mutlak (p.txt §9c) ──────────
+        boleh_buka, harus_shutdown, pesan_floor = self._cek_ekuitas_floor(ekuitas)
+        if harus_shutdown:
+            log.append(pesan_floor)
+            self.is_running = False
+            return log
+        if not boleh_buka:
+            log.append(pesan_floor)
+            return log
+
         # ── Validasi Modal Kecil ──────────────────────────
         self.cek_keamanan_modal_kecil(saldo)
 
@@ -1112,6 +1430,12 @@ class ArgenBotPro:
         boleh_lanjut, pesan_pause = self._cek_pause_rugi_1jam(ekuitas)
         if not boleh_lanjut:
             log.append(pesan_pause)
+            return log
+
+        # ── Pause Loss Beruntun (p.txt §9b) ──────────────
+        boleh_lanjut_con, pesan_con = self._cek_pause_consecutive_loss()
+        if not boleh_lanjut_con:
+            log.append(pesan_con)
             return log
 
         # Tampilkan fase pertumbuhan di setiap siklus (tidak ada auto-stop — makin besar makin baik)
@@ -1174,6 +1498,13 @@ class ArgenBotPro:
 
             if info.spread > self.max_spread:
                 log.append(f"⚠️ {sim}: spread {info.spread}pts — dilewati")
+                continue
+
+            # ── Spread Safety Multiplier (p.txt §10) ──────
+            spread_aman, pesan_mult = self._cek_spread_mult(sim, info.spread)
+            if pesan_mult:
+                log.append(pesan_mult)
+            if not spread_aman:
                 continue
 
             atr_pips  = self._hitung_atr_pips(sim, mt5.TIMEFRAME_M15, self.periode_atr)
@@ -1315,6 +1646,9 @@ class ArgenBotPro:
             else:
                 kode = res.retcode if res else "None"
                 log.append(f"❌ {arah_signal} ditolak {sim} — retcode: {kode}")
+
+        # ── Simpan state setiap 60 detik (p.txt §12) ──────
+        self._simpan_state()
 
         return log
 

@@ -281,6 +281,23 @@
     <div style="margin-top:10px; font-size:11px; color:var(--muted); text-align:center;" id="demo-aviso">
       Mode DEMO aktif — tanpa risiko nyata
     </div>
+    <button id="btn-emergency"
+      onclick="emergencyStop()"
+      style="margin-top:10px; width:100%; padding:9px; border-radius:8px; border:1px solid #ef444466;
+             background:#7f1d1d33; color:#ef4444; font-size:11px; font-weight:700; cursor:pointer;
+             letter-spacing:.5px; text-transform:uppercase;">
+      🚨 Emergency Stop
+    </button>
+    <div id="emergency-pass-wrap" style="display:none; margin-top:8px;">
+      <input id="emergency-pass" type="password" placeholder="Password emergency"
+        style="width:100%; padding:7px 10px; border-radius:7px; border:1px solid var(--border);
+               background:var(--surface2); color:var(--text); font-size:12px;" />
+      <button onclick="emergencyStopConfirm()"
+        style="margin-top:5px; width:100%; padding:7px; border-radius:7px; border:none;
+               background:#ef4444; color:#fff; font-size:12px; font-weight:700; cursor:pointer;">
+        KONFIRMASI EMERGENCY STOP
+      </button>
+    </div>
   </div>
 
   <!-- Statistik harian -->
@@ -308,6 +325,43 @@
         <div class="stat-label">Fase</div>
         <div class="stat-value" id="fase-stat" style="font-size:13px; color:var(--blue)">—</div>
       </div>
+    </div>
+  </div>
+
+  <!-- Safety Monitor (p.txt §9-12) -->
+  <div class="card card-full" id="safety-panel">
+    <div class="card-label">🛡 Safety Monitor — Proteksi Modal</div>
+    <div class="stat-grid" style="grid-template-columns: repeat(6,1fr);">
+      <div class="stat-item">
+        <div class="stat-label">Loss Beruntun</div>
+        <div class="stat-value" id="consecutive-loss" style="color:var(--yellow)">0</div>
+        <div style="font-size:10px; color:var(--muted); margin-top:2px;" id="consecutive-maks">maks 3×</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Win Rate</div>
+        <div class="stat-value" id="win-rate" style="color:var(--green)">—</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Profit Factor</div>
+        <div class="stat-value" id="profit-factor" style="color:var(--blue)">—</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Max Drawdown</div>
+        <div class="stat-value" id="max-dd" style="color:var(--red)">0%</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Menang / Kalah</div>
+        <div class="stat-value" id="wl-count" style="font-size:13px;">—</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Status Ekuitas</div>
+        <div class="stat-value" id="equity-floor-status" style="font-size:12px; color:var(--green)">AMAN</div>
+      </div>
+    </div>
+    <div id="pause-beruntun-bar" style="display:none; margin-top:10px; padding:8px 12px;
+         background:#78350f33; border:1px solid #f59e0b44; border-radius:8px;
+         font-size:12px; color:var(--yellow);">
+      ⏳ <span id="pause-beruntun-txt">—</span>
     </div>
   </div>
 
@@ -517,6 +571,43 @@
         modeDemo ? 'Mode DEMO aktif — tanpa risiko nyata'
                  : '⚠️ Akun REAL — trading dengan uang nyata';
 
+      // ── Safety Monitor (p.txt §9-12) ──────────────────
+      const conLoss   = s.consecutive_losses ?? 0;
+      const maksBeruntun = s.max_loss_berturut ?? 3;
+      const conEl     = document.getElementById('consecutive-loss');
+      conEl.textContent = conLoss;
+      conEl.style.color = conLoss >= maksBeruntun - 1 ? 'var(--red)' : conLoss > 0 ? 'var(--yellow)' : 'var(--green)';
+      document.getElementById('consecutive-maks').textContent = `maks ${maksBeruntun}×`;
+
+      const winC  = s.win_count  ?? 0;
+      const lossC = s.loss_count ?? 0;
+      const total = winC + lossC;
+      document.getElementById('win-rate').textContent = total > 0 ? (s.win_rate_pct ?? 0).toFixed(1) + '%' : '—';
+      document.getElementById('win-rate').style.color = (s.win_rate_pct ?? 0) >= 50 ? 'var(--green)' : 'var(--red)';
+
+      const pf = s.profit_factor ?? 0;
+      document.getElementById('profit-factor').textContent = total > 0 ? pf.toFixed(2) : '—';
+      document.getElementById('profit-factor').style.color = pf >= 1 ? 'var(--green)' : pf > 0 ? 'var(--yellow)' : 'var(--muted)';
+
+      document.getElementById('max-dd').textContent = (s.max_drawdown_pct ?? 0).toFixed(1) + '%';
+      document.getElementById('wl-count').textContent = total > 0 ? `${winC}W / ${lossC}L` : '—';
+
+      const floorAktif = s.equity_floor_aktif ?? false;
+      const floorEl    = document.getElementById('equity-floor-status');
+      floorEl.textContent = floorAktif ? '⚠️ PROTEKSI' : 'AMAN';
+      floorEl.style.color = floorAktif ? 'var(--red)' : 'var(--green)';
+
+      // Pause loss beruntun
+      const pauseBerBar = document.getElementById('pause-beruntun-bar');
+      const pauseBerAktif = s.pause_beruntun_aktif ?? false;
+      if (pauseBerAktif) {
+        pauseBerBar.style.display = 'block';
+        document.getElementById('pause-beruntun-txt').textContent =
+          `Pause loss beruntun ${maksBeruntun}× aktif — lanjut dalam ${s.pause_beruntun_sisa ?? 0} menit`;
+      } else {
+        pauseBerBar.style.display = 'none';
+      }
+
       // Log
       if (data.new_logs && data.new_logs.length > 0) tambahLog(data.new_logs);
 
@@ -560,6 +651,30 @@
   function clearLog() {
     document.getElementById('log-box').innerHTML =
       '<div class="log-line log-radar">Log dibersihkan</div>';
+  }
+
+  function emergencyStop() {
+    const wrap = document.getElementById('emergency-pass-wrap');
+    wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
+  }
+
+  async function emergencyStopConfirm() {
+    const pass = document.getElementById('emergency-pass').value;
+    if (!pass) { tambahLog(['❌ Masukkan password emergency']); return; }
+    try {
+      const r    = await fetch(`/api/emergency_stop?password=${encodeURIComponent(pass)}`);
+      const data = await r.json();
+      if (data.status === 'emergency_stopped') {
+        tambahLog([`🚨 EMERGENCY STOP berhasil — ${data.posisi_ditutup?.length ?? 0} posisi ditutup`]);
+        document.getElementById('emergency-pass-wrap').style.display = 'none';
+        document.getElementById('emergency-pass').value = '';
+        ambilStatus();
+      } else {
+        tambahLog([`❌ Emergency Stop gagal: ${data.message}`]);
+      }
+    } catch(e) {
+      tambahLog(['❌ Tidak dapat menghubungi server untuk emergency stop']);
+    }
   }
 
   let modeSimulasi = false;

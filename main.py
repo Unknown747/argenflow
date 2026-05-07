@@ -284,6 +284,74 @@ async def status_modal_kecil():
 
 
 # ══════════════════════════════════════════════════════════
+#  API — EMERGENCY STOP (p.txt §19)
+# ══════════════════════════════════════════════════════════
+
+@app.get("/api/emergency_stop")
+async def emergency_stop(password: str = ""):
+    """Endpoint darurat: hentikan bot dan tutup semua posisi. Proteksi via password."""
+    EMERGENCY_PASSWORD = os.getenv("EMERGENCY_PASSWORD", "savemymoney")
+    if password != EMERGENCY_PASSWORD:
+        return {"status": "error", "message": "Password salah — akses ditolak"}
+    if not BOT_TERSEDIA or bot is None:
+        return {"status": "error", "message": "Bot tidak tersedia"}
+
+    bot.is_running = False
+    posisi_ditutup = []
+    errors         = []
+
+    if MT5_TERSEDIA:
+        try:
+            posisi = mt5.positions_get()
+            if posisi:
+                for pos in posisi:
+                    if pos.magic == bot.magic_number:
+                        sukses, pesan_pos = bot._tutup_posisi(pos)
+                        if sukses:
+                            posisi_ditutup.append(pos.symbol)
+                        else:
+                            errors.append(pesan_pos)
+        except Exception as e:
+            errors.append(str(e))
+
+    pesan_ui.append(
+        f"🚨 EMERGENCY STOP — bot dihentikan | {len(posisi_ditutup)} posisi ditutup"
+    )
+    return {
+        "status":         "emergency_stopped",
+        "posisi_ditutup": posisi_ditutup,
+        "errors":         errors,
+    }
+
+
+@app.get("/api/stats")
+async def ambil_stats():
+    """Statistik performa harian (win rate, profit factor, drawdown, dll)."""
+    if BOT_TERSEDIA and bot is not None:
+        stat = bot.dapatkan_statistik()
+        return {
+            "win_count":          stat.get("win_count", 0),
+            "loss_count":         stat.get("loss_count", 0),
+            "win_rate_pct":       stat.get("win_rate_pct", 0.0),
+            "profit_factor":      stat.get("profit_factor", 0.0),
+            "max_drawdown_pct":   stat.get("max_drawdown_pct", 0.0),
+            "consecutive_losses": stat.get("consecutive_losses", 0),
+            "equity_floor_aktif": stat.get("equity_floor_aktif", False),
+            "pause_beruntun_aktif": stat.get("pause_beruntun_aktif", False),
+            "pause_beruntun_sisa":  stat.get("pause_beruntun_sisa", 0),
+        }
+    import json as _json
+    from bot_engine import DAILY_STATS_FILE
+    try:
+        if os.path.exists(DAILY_STATS_FILE):
+            with open(DAILY_STATS_FILE, "r", encoding="utf-8") as f:
+                return _json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+# ══════════════════════════════════════════════════════════
 #  STARTUP
 # ══════════════════════════════════════════════════════════
 
