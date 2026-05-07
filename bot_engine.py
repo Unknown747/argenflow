@@ -197,11 +197,13 @@ class ArgenBotPro:
         self.max_sl_pips_xau   = int(os.getenv("MAX_SL_PIPS_XAU",   "150"))
 
         # ── Target pertumbuhan modal ──────────────────────
-        # Strategi: mulai $5-10, tumbuh hingga target, berhenti otomatis
-        # Fase PERTUMBUHAN  (saldo < 50% target) : risiko 2.0% — agresif
-        # Fase AKSELERASI   (50%-75% target)     : risiko 1.5% — moderat
-        # Fase PROTEKSI     (75%-100% target)    : risiko 1.0% — konservatif
-        # Fase TARGET!      (≥ 100% target)      : bot berhenti otomatis
+        # Strategi: mulai $5-10, tumbuh terus — bot TIDAK berhenti di target.
+        # saldo_target hanya dipakai sebagai referensi tampilan di dashboard.
+        # Fase PERTUMBUHAN  (profit < 50%)  : risiko 2.5% — agresif
+        # Fase AKSELERASI   (profit 50-150%): risiko 2.0% — moderat
+        # Fase PROTEKSI     (profit 150-300%): risiko 1.5% — konservatif
+        # Fase ULTRA        (profit ≥ 300%) : risiko 1.0% — sangat hati-hati
+        # Bot terus jalan di semua fase — tidak ada auto-stop di target.
         self.saldo_target      = float(os.getenv("SALDO_TARGET", "20.0"))
         self._saldo_awal_modal = 0.0   # Di-set sekali saat pertama connect
         self._saldo_terakhir   = 0.0   # Saldo terakhir yang diketahui
@@ -256,37 +258,8 @@ class ArgenBotPro:
         self._muat_state()
 
     # ═══════════════════════════════════════════════════════════════════
-    #  DARURAT: VALIDASI MODAL & MARGIN UNTUK AKUN STANDARD $10
+    #  HELPER AKUN
     # ═══════════════════════════════════════════════════════════════════
-
-    def cek_keamanan_modal_kecil(self, saldo=None):
-        """CEK WAJIB: Aktifkan mode darurat jika modal < $15"""
-        if saldo is None:
-            saldo = self.dapatkan_saldo()
-
-        # Cek jenis akun berdasarkan margin requirement
-        margin_per_lot = self.dapatkan_margin_per_lot("EURUSDm")
-        is_standard_account = margin_per_lot > 1.0  # Standard account margin > $1 per 0.01 lot
-
-        if saldo < BATAS_MODAL_KECIL or is_standard_account:
-            self.mode_modal_kecil = True
-            # Paksa parameter aman
-            self.risiko_pct = RISIKO_PERSEN_MODAL_KECIL  # 0.5%
-            self.max_lot = LOT_MAX_MODAL_KECIL  # 0.01
-            self.min_lot = LOT_MAX_MODAL_KECIL
-            self.max_positions = 1  # Hanya 1 posisi sekaligus
-
-            # Paksa SL fixed ketat (bukan ATR)
-            self.sl_fixed_mode = True
-            self.sl_fixed_poin = SL_FIXED_POIN  # 20 poin
-            self.tp_fixed_poin = TP_FIXED_POIN  # 40 poin
-
-            if is_standard_account:
-                print(f"[PERINGATAN] Akun STANDARD terdeteksi! Modal ${saldo} tidak cukup.")
-                print(f"           → WAJIB pindah ke CENT ACCOUNT untuk modal kecil.")
-
-            return True
-        return False
 
     def dapatkan_saldo(self):
         """Ambil saldo dari MT5 atau mode simulasi"""
@@ -1735,16 +1708,17 @@ class ArgenBotPro:
                 tp_pips  = sl_pips * 2
                 sl_harga = round(sl_pips * info.point, info.digits)
                 tp_harga = round(tp_pips * info.point, info.digits)
-                # Modal kecil sudah di-clamp — lewati cek max_sl_pips
             else:
-                # ── Proteksi akun normal: tolak jika SL terlalu besar ──
+                # ── Akun normal: clamp SL ke batas maksimum, jangan tolak ──
+                # Di simulasi ATR sering jauh di atas batas karena volatilitas
+                # data acak — clamp ke batas agar bot tetap bisa trade.
+                # Di akun nyata, clamp juga lebih aman daripada skip sinyal bagus.
                 batas_sl = self.max_sl_pips_xau if sim == "XAUUSDm" else self.max_sl_pips_forex
                 if sl_pips > batas_sl:
-                    log.append(
-                        f"⚠️ {sim}: ATR terlalu lebar (SL {sl_pips:.0f}p > maks {batas_sl}p) "
-                        f"— risiko terlalu besar untuk akun mikro, dilewati{label_sim}"
-                    )
-                    continue
+                    sl_pips  = batas_sl
+                    tp_pips  = round(sl_pips * (self.tp_atr_mult / max(self.sl_atr_mult, 0.1)), 1)
+                    sl_harga = round(sl_pips * info.point, info.digits)
+                    tp_harga = round(tp_pips * info.point, info.digits)
 
             # Lot dinamis berbasis % risiko
             lot = self._hitung_lot_dinamis(saldo, sim, sl_pips)
