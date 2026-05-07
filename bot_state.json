@@ -1,0 +1,18 @@
+{
+  "ts": 1778181685.4055815,
+  "tanggal": "2026-05-08",
+  "saldo_awal_hari": 10.0,
+  "saldo_awal_modal": 10.0,
+  "saldo_terakhir": 10.0,
+  "trade_hari_ini": 5,
+  "pnl_hari_ini": 0.75,
+  "batas_rugi_aktif": false,
+  "consecutive_losses": 2,
+  "win_count": 3,
+  "loss_count": 2,
+  "total_profit_wins": 0.0,
+  "total_loss_losses": 0.0,
+  "max_drawdown_pct": 1.8,
+  "pause_consecutive": null,
+  "pause_1jam": null
+}

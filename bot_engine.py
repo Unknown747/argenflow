@@ -1311,6 +1311,12 @@ class ArgenBotPro:
             self._total_profit_wins    = state.get("total_profit_wins",  0.0)
             self._total_loss_losses    = state.get("total_loss_losses",  0.0)
             self._max_drawdown_pct     = state.get("max_drawdown_pct",   0.0)
+            # PENTING: Restore _tanggal_hari agar _reset_tracker_harian tidak
+            # menghapus state yang baru saja dimuat (bug: None != today → reset)
+            try:
+                self._tanggal_hari = datetime.date.fromisoformat(hari_tersimpan)
+            except Exception:
+                self._tanggal_hari = _sekarang_wib().date()
             if state.get("pause_consecutive"):
                 try:
                     self._pause_consecutive_hingga = datetime.datetime.fromisoformat(
