@@ -396,6 +396,28 @@
         <span class="cfg-key">Batas Rugi Hari Ini</span>
         <span class="cfg-val" id="batas-status">Belum Tercapai</span>
       </div>
+      <div style="border-top:1px solid var(--border); margin: 10px 0 8px;"></div>
+      <div class="card-label" style="font-size:10px; margin-bottom:6px; color:var(--muted);">⟳ TRAILING STOP DINAMIS</div>
+      <div class="cfg-row">
+        <span class="cfg-key">Mode Trailing</span>
+        <span class="cfg-val" id="trailing-mode">—</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">Breakeven @ TP</span>
+        <span class="cfg-val" id="trailing-be">—</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">Kunci Profit @ TP</span>
+        <span class="cfg-val" id="trailing-kunci">—</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">Fraksi Dikunci</span>
+        <span class="cfg-val" id="trailing-fraksi">—</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">Trailing Kontinu</span>
+        <span class="cfg-val" id="trailing-kontinu">—</span>
+      </div>
     </div>
   </div>
 
@@ -575,6 +597,43 @@
       } else {
         batasEl.textContent = '✅ Belum Tercapai';
         batasEl.className   = 'cfg-val';
+      }
+
+      // ── Trailing Stop Dinamis ────────────────────────
+      const trAktif  = s.trailing_aktif !== false;
+      const trBe     = s.trailing_be_efektif  ?? 50;
+      const trKunci  = s.trailing_kunci_efektif ?? 72;
+      const trFraksi = s.trailing_kunci_fraksi ?? 40;
+      const trKont   = s.trailing_kontinu ?? false;
+      const trFase   = s.fase ?? 'PERTUMBUHAN';
+
+      // Label mode berdasarkan fase
+      let trModeLabel, trModeColor;
+      if (!trAktif) {
+        trModeLabel = '⛔ Nonaktif'; trModeColor = 'var(--muted)';
+      } else if (trFase === 'PROTEKSI' || trFase === 'TARGET!') {
+        trModeLabel = '🛡 KETAT (Proteksi)'; trModeColor = 'var(--green)';
+      } else if (trFase === 'AKSELERASI') {
+        trModeLabel = '⚡ SEDANG (Akselerasi)'; trModeColor = 'var(--yellow)';
+      } else {
+        trModeLabel = '🚀 LONGGAR (Pertumbuhan)'; trModeColor = 'var(--blue)';
+      }
+
+      const trModeEl = document.getElementById('trailing-mode');
+      trModeEl.textContent = trModeLabel;
+      trModeEl.style.color = trModeColor;
+
+      document.getElementById('trailing-be').textContent    = `${trBe}% jarak TP`;
+      document.getElementById('trailing-kunci').textContent = `${trKunci}% jarak TP`;
+      document.getElementById('trailing-fraksi').textContent = `${trFraksi}% profit TP`;
+
+      const kontEl = document.getElementById('trailing-kontinu');
+      if (trKont) {
+        kontEl.textContent = '✅ Aktif — SL mengikuti harga';
+        kontEl.style.color = 'var(--green)';
+      } else {
+        kontEl.textContent = '— Tidak aktif';
+        kontEl.style.color = 'var(--muted)';
       }
 
       // Berita berikutnya

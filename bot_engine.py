@@ -194,6 +194,35 @@ class ArgenBotPro:
         self._batas_rugi_aktif = False
         return True
 
+    def _trailing_params(self, saldo):
+        """
+        Agresivitas trailing stop disesuaikan otomatis berdasarkan fase pertumbuhan.
+
+        Fase PERTUMBUHAN  (< 50% target) — LONGGAR: biarkan profit berlari
+          • BE dipicu pada 50% jarak TP  → masuk breakeven agak lambat
+          • Kunci dipicu pada 72% jarak TP → kunci 40% profit
+          • Tidak ada trailing kontinu
+
+        Fase AKSELERASI  (50–75% target) — SEDANG: seimbang antara profit & proteksi
+          • BE dipicu pada 40% jarak TP
+          • Kunci dipicu pada 62% jarak TP → kunci 52% profit
+
+        Fase PROTEKSI    (75–100% target) — KETAT: jaga modal yang hampir mencapai target
+          • BE dipicu pada 28% jarak TP  → breakeven sangat cepat
+          • Kunci dipicu pada 50% jarak TP → kunci 65% profit
+          • Trailing kontinu: setelah kunci, SL terus mengikuti harga
+        """
+        if self.saldo_target <= 0 or saldo <= 0:
+            return {"be_pct": self.trailing_be_pct, "kunci_pct": self.trailing_kunci_pct,
+                    "kunci_fraksi": 0.50, "buffer_mult": 3, "kontinu": False}
+        rasio = saldo / self.saldo_target
+        if rasio < 0.50:       # PERTUMBUHAN — longgar
+            return {"be_pct": 50, "kunci_pct": 72, "kunci_fraksi": 0.40, "buffer_mult": 3, "kontinu": False}
+        elif rasio < 0.75:     # AKSELERASI — sedang
+            return {"be_pct": 40, "kunci_pct": 62, "kunci_fraksi": 0.52, "buffer_mult": 3, "kontinu": False}
+        else:                  # PROTEKSI — ketat + trailing kontinu
+            return {"be_pct": 28, "kunci_pct": 50, "kunci_fraksi": 0.65, "buffer_mult": 2, "kontinu": True}
+
     def _risiko_efektif(self, saldo):
         """Risiko bertingkat: agresif di awal, konservatif mendekati target."""
         if self.saldo_target <= 0 or saldo <= 0:
@@ -217,7 +246,9 @@ class ArgenBotPro:
         else:               return "PERTUMBUHAN"
 
     def dapatkan_statistik(self):
-        risiko_eff = self._risiko_efektif(self._saldo_terakhir) if self._saldo_terakhir > 0 else 2.0
+        saldo_ref  = self._saldo_terakhir if self._saldo_terakhir > 0 else 0.0
+        risiko_eff = self._risiko_efektif(saldo_ref) if saldo_ref > 0 else 2.0
+        tp_par     = self._trailing_params(saldo_ref)
         return {
             "trade_hari_ini":     self._trade_hari_ini,
             "pnl_hari_ini":       self._pnl_hari_ini,
@@ -227,9 +258,6 @@ class ArgenBotPro:
             "max_rugi_pct":       self.max_rugi_harian_pct,
             "sl_atr_mult":        self.sl_atr_mult,
             "tp_atr_mult":        self.tp_atr_mult,
-            "trailing_aktif":     self.trailing_aktif,
-            "trailing_be_pct":    self.trailing_be_pct,
-            "trailing_kunci_pct": self.trailing_kunci_pct,
             "adx_aktif":          self.adx_aktif,
             "adx_min":            self.adx_min,
             "cooldown_menit":     self.cooldown_menit,
@@ -238,7 +266,13 @@ class ArgenBotPro:
             "max_sl_pips_xau":    self.max_sl_pips_xau,
             "saldo_target":       self.saldo_target,
             "saldo_awal_modal":   self._saldo_awal_modal,
-            "fase":               self._fase_pertumbuhan(self._saldo_terakhir) if self._saldo_terakhir > 0 else "PERTUMBUHAN",
+            "fase":               self._fase_pertumbuhan(saldo_ref) if saldo_ref > 0 else "PERTUMBUHAN",
+            # Trailing stop dinamis — nilai efektif berdasarkan fase saat ini
+            "trailing_aktif":         self.trailing_aktif,
+            "trailing_be_efektif":    tp_par["be_pct"],
+            "trailing_kunci_efektif": tp_par["kunci_pct"],
+            "trailing_kunci_fraksi":  int(tp_par["kunci_fraksi"] * 100),
+            "trailing_kontinu":       tp_par["kontinu"],
         }
 
     # ══════════════════════════════════════════════════════
@@ -440,15 +474,22 @@ class ArgenBotPro:
 
     def _monitor_trailing_stop(self):
         """
-        Pantau semua posisi terbuka dan geser SL secara otomatis:
+        Pantau semua posisi terbuka dan geser SL secara otomatis.
+        Parameter trailing disesuaikan DINAMIS berdasarkan fase pertumbuhan modal:
 
-          Tahap 1 — Breakeven (TRAILING_BE_PCT, default 50% dari TP):
-            Ketika profit mencapai ≥ 50% jarak TP, geser SL ke harga
-            entry + 2 pip buffer → trade tidak bisa rugi lagi.
+          PERTUMBUHAN  (< 50% target) — LONGGAR
+            Tahap 1 — Breakeven @ 50% TP  → buffer 3 pip
+            Tahap 2 — Kunci 40% TP distance @ 72% TP profit
+            (tanpa trailing kontinu — biarkan profit berlari)
 
-          Tahap 2 — Kunci Profit (TRAILING_KUNCI_PCT, default 75% dari TP):
-            Ketika profit mencapai ≥ 75% jarak TP, geser SL ke titik
-            yang mengunci 50% dari target profit → "profit pasti" terjamin.
+          AKSELERASI   (50-75% target) — SEDANG
+            Tahap 1 — Breakeven @ 40% TP  → buffer 3 pip
+            Tahap 2 — Kunci 52% TP distance @ 62% TP profit
+
+          PROTEKSI     (75-100% target) — KETAT
+            Tahap 1 — Breakeven @ 28% TP  → buffer 2 pip (sangat cepat)
+            Tahap 2 — Kunci 65% TP distance @ 50% TP profit
+            Tahap 3 — Trailing kontinu: SL mengikuti harga setelah kunci
         """
         log       = []
         label_sim = " [SIM]" if MODE_SIMULASI else ""
@@ -463,6 +504,14 @@ class ArgenBotPro:
 
         if not semua_posisi:
             return log
+
+        # Ambil parameter trailing dinamis berdasarkan saldo terkini
+        tp_par = self._trailing_params(self._saldo_terakhir)
+        be_pct       = tp_par["be_pct"]
+        kunci_pct    = tp_par["kunci_pct"]
+        kunci_fraksi = tp_par["kunci_fraksi"]
+        buffer_mult  = tp_par["buffer_mult"]
+        kontinu      = tp_par["kontinu"]
 
         for pos in semua_posisi:
             if pos.magic != self.magic_number:
@@ -487,19 +536,24 @@ class ArgenBotPro:
                 continue
 
             digit      = info.digits
-            buffer_pip = info.point * 3   # 3 pip buffer di atas breakeven
+            buffer_pip = info.point * buffer_mult   # pip buffer breakeven (fase-dinamis)
 
             # Hitung posisi profit relatif terhadap jarak TP
             if tipe == 0:    # BUY
-                jarak_tp    = tp - harga_masuk
-                profit_kini = tick.bid - harga_masuk
-                be_level    = round(harga_masuk + buffer_pip, digit)
-                kunci_level = round(harga_masuk + jarak_tp * 0.50, digit)
+                jarak_tp      = tp - harga_masuk
+                profit_kini   = tick.bid - harga_masuk
+                harga_kini    = tick.bid
+                be_level      = round(harga_masuk + buffer_pip, digit)
+                kunci_level   = round(harga_masuk + jarak_tp * kunci_fraksi, digit)
+                # Trailing kontinu: SL mengikuti harga pada jarak tetap
+                trail_kontinu = round(harga_kini - jarak_tp * (1.0 - kunci_fraksi), digit)
             else:            # SELL
-                jarak_tp    = harga_masuk - tp
-                profit_kini = harga_masuk - tick.ask
-                be_level    = round(harga_masuk - buffer_pip, digit)
-                kunci_level = round(harga_masuk - jarak_tp * 0.50, digit)
+                jarak_tp      = harga_masuk - tp
+                profit_kini   = harga_masuk - tick.ask
+                harga_kini    = tick.ask
+                be_level      = round(harga_masuk - buffer_pip, digit)
+                kunci_level   = round(harga_masuk - jarak_tp * kunci_fraksi, digit)
+                trail_kontinu = round(harga_kini + jarak_tp * (1.0 - kunci_fraksi), digit)
 
             if jarak_tp <= 0:
                 continue
@@ -507,26 +561,35 @@ class ArgenBotPro:
             pct = (profit_kini / jarak_tp) * 100
 
             # Tentukan level SL baru yang harus diterapkan
-            sl_baru   = None
+            sl_baru    = None
             label_aksi = ""
 
-            if pct >= self.trailing_kunci_pct:
-                # Tahap 2 — Kunci 50% profit
-                if tipe == 0 and (sl == 0 or sl < kunci_level):
-                    sl_baru    = kunci_level
-                    label_aksi = f"🔒 Kunci {self.trailing_kunci_pct:.0f}%"
-                elif tipe == 1 and (sl == 0 or sl > kunci_level):
-                    sl_baru    = kunci_level
-                    label_aksi = f"🔒 Kunci {self.trailing_kunci_pct:.0f}%"
+            if pct >= kunci_pct:
+                if kontinu:
+                    # Tahap 3 — Trailing kontinu (PROTEKSI): SL mengikuti harga
+                    if tipe == 0 and (sl == 0 or sl < trail_kontinu):
+                        sl_baru    = trail_kontinu
+                        label_aksi = f"📡 Trail Kontinu [{kunci_pct:.0f}%]"
+                    elif tipe == 1 and (sl == 0 or sl > trail_kontinu):
+                        sl_baru    = trail_kontinu
+                        label_aksi = f"📡 Trail Kontinu [{kunci_pct:.0f}%]"
+                else:
+                    # Tahap 2 — Kunci fraksi profit (PERTUMBUHAN/AKSELERASI)
+                    if tipe == 0 and (sl == 0 or sl < kunci_level):
+                        sl_baru    = kunci_level
+                        label_aksi = f"🔒 Kunci {int(kunci_fraksi*100)}% [{kunci_pct:.0f}%]"
+                    elif tipe == 1 and (sl == 0 or sl > kunci_level):
+                        sl_baru    = kunci_level
+                        label_aksi = f"🔒 Kunci {int(kunci_fraksi*100)}% [{kunci_pct:.0f}%]"
 
-            elif pct >= self.trailing_be_pct:
+            elif pct >= be_pct:
                 # Tahap 1 — Breakeven
                 if tipe == 0 and (sl == 0 or sl < be_level):
                     sl_baru    = be_level
-                    label_aksi = "⚖️ Breakeven"
+                    label_aksi = f"⚖️ Breakeven [{be_pct:.0f}%]"
                 elif tipe == 1 and (sl == 0 or sl > be_level):
                     sl_baru    = be_level
-                    label_aksi = "⚖️ Breakeven"
+                    label_aksi = f"⚖️ Breakeven [{be_pct:.0f}%]"
 
             if sl_baru is None:
                 continue
