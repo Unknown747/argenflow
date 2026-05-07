@@ -69,6 +69,33 @@ _NILAI_PIP_MIKRO = {
     "XAUUSDm": 0.01,
 }
 
+# ──────────────────────────────────────────────────────────────────────────────
+#  PARAMETER SCALPING & MODAL KECIL
+#  Semua nilai dapat diubah di sini tanpa restart (kecuali SIMBOL_AKTIF)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Modal Kecil — aktif otomatis jika saldo < BATAS_MODAL_KECIL
+BATAS_MODAL_KECIL         = 15.0   # USD
+RISIKO_PERSEN_MODAL_KECIL = 0.5    # % per trade (konservatif)
+LOT_MAX_MODAL_KECIL       = 0.01   # micro lot
+MAX_POSISI_MODAL_KECIL    = 1      # maks 1 posisi terbuka sekaligus
+
+# Scalping
+SCAN_INTERVAL_DETIK = 3            # interval scan (detik) — dipakai di main.py
+MIN_PROFIT_POIN     = 15           # minimal profit sebelum trailing (poin)
+TRAILING_STOP_POIN  = 10           # trailing aktif setelah profit > MIN_PROFIT_POIN
+SL_FIXED_POIN       = 20           # SL default (poin) — 15–30 range
+TP_FIXED_POIN       = 40           # TP default (poin) — rasio 1:2
+
+# Filter Keamanan
+MAX_SPREAD_POIN             = 20   # maks spread yang diizinkan (2 pip)
+MAKSIMAL_RUGI_HARIAN_PERSEN = 10   # stop trading jika loss > 10%/hari
+HINDARI_NEWS_MENIT          = 30   # jeda sebelum/sesudah berita tinggi (menit)
+PAUSE_RUGI_1JAM_PERSEN      = 5.0  # pause 1 jam jika loss > 5% dalam 1 jam
+
+# Simbol aktif — EURUSD & GBPUSD saja (spread rendah, sesi London/NY optimal)
+SIMBOL_AKTIF = ["EURUSDm", "GBPUSDm"]
+
 
 class ArgenBotPro:
 
@@ -80,7 +107,7 @@ class ArgenBotPro:
         self.is_running    = False
         self.mode_simulasi = MODE_SIMULASI
 
-        self.daftar_simbol = ["EURUSDm", "GBPUSDm", "USDJPYm", "XAUUSDm"]
+        self.daftar_simbol = list(SIMBOL_AKTIF)
         self.magic_number  = 20260422
 
         # ── Parameter risiko (dari .env) ──────────────────
@@ -157,6 +184,14 @@ class ArgenBotPro:
         # Max 300 titik — cukup untuk beberapa hari sesi trading
         self._riwayat_ekuitas: list = []
         self._MAX_RIWAYAT = 300
+
+        # ── Mode Modal Kecil ───────────────────────────────
+        self.mode_modal_kecil = False   # Di-set otomatis oleh cek_keamanan_modal_kecil()
+
+        # ── Pause rugi 1 jam ───────────────────────────────
+        self._ekuitas_snapshot_1jam  = 0.0
+        self._waktu_snapshot_1jam    = None
+        self._pause_rugi_1jam_hingga = None   # datetime WIB — pause aktif hingga sini
 
         self.ai = AIManager()
         self._inisialisasi_log()
@@ -327,6 +362,25 @@ class ArgenBotPro:
         risiko_eff = self._risiko_efektif(saldo_ref) if saldo_ref > 0 else 2.5
         tp_par     = self._trailing_params(saldo_ref)
         target_din = self._hitung_target_profit_dinamis(saldo_ref) if saldo_ref > 0 else self.target_profit_usd
+
+        # Sisa drawdown harian yang tersisa
+        if self._saldo_awal_hari > 0 and self._pnl_hari_ini < 0:
+            loss_harian_pct = abs(self._pnl_hari_ini) / self._saldo_awal_hari * 100
+        else:
+            loss_harian_pct = 0.0
+        sisa_drawdown_pct = round(max(0.0, self.max_rugi_harian_pct - loss_harian_pct), 2)
+
+        # Status pause rugi 1 jam
+        sekarang = _sekarang_wib()
+        pause_1jam_aktif = (
+            self._pause_rugi_1jam_hingga is not None
+            and sekarang < self._pause_rugi_1jam_hingga
+        )
+        pause_1jam_sisa_menit = (
+            int((self._pause_rugi_1jam_hingga - sekarang).total_seconds() / 60)
+            if pause_1jam_aktif else 0
+        )
+
         return {
             "trade_hari_ini":     self._trade_hari_ini,
             "pnl_hari_ini":       self._pnl_hari_ini,
@@ -347,8 +401,8 @@ class ArgenBotPro:
             "profit_pct":         round(self._profit_pct(saldo_ref), 2) if saldo_ref > 0 else 0.0,
             "fase":               self._fase_pertumbuhan(saldo_ref) if saldo_ref > 0 else "PERTUMBUHAN",
             # Target Profit Cepat
-            "target_profit_aktif": self.target_profit_aktif,
-            "target_profit_usd":   self.target_profit_usd,
+            "target_profit_aktif":   self.target_profit_aktif,
+            "target_profit_usd":     self.target_profit_usd,
             "target_profit_dinamis": target_din,
             # Trailing stop dinamis — nilai efektif berdasarkan fase saat ini
             "trailing_aktif":         self.trailing_aktif,
@@ -356,6 +410,17 @@ class ArgenBotPro:
             "trailing_kunci_efektif": tp_par["kunci_pct"],
             "trailing_kunci_fraksi":  int(tp_par["kunci_fraksi"] * 100),
             "trailing_kontinu":       tp_par["kontinu"],
+            # Modal kecil & scalping
+            "mode_modal_kecil":       self.mode_modal_kecil,
+            "batas_modal_kecil":      BATAS_MODAL_KECIL,
+            "lot_saat_ini":           LOT_MAX_MODAL_KECIL if self.mode_modal_kecil else self.max_lot,
+            "sl_fixed_poin":          SL_FIXED_POIN,
+            "tp_fixed_poin":          TP_FIXED_POIN,
+            "max_spread_poin":        MAX_SPREAD_POIN,
+            "sisa_drawdown_pct":      sisa_drawdown_pct,
+            "pause_rugi_1jam_aktif":  pause_1jam_aktif,
+            "pause_rugi_1jam_sisa":   pause_1jam_sisa_menit,
+            "simbol_aktif":           SIMBOL_AKTIF,
         }
 
     # ══════════════════════════════════════════════════════
@@ -378,26 +443,23 @@ class ArgenBotPro:
         if self.filter_senin and sekarang_wib.weekday() == 0 and sekarang_wib.hour < 9:
             return False
 
-        # Filter Jumat malam WIB (spread melebar jelang weekend): 22:00–24:00 WIB
-        if self.filter_jumat and sekarang_wib.weekday() == 4 and sekarang_wib.hour >= 22:
+        # Filter Jumat penuh WIB — hindari seluruh hari Jumat (spread melebar jelang weekend)
+        if self.filter_jumat and sekarang_wib.weekday() == 4:
             return False
 
         return True  # Pemeriksaan jam dilakukan per-simbol
 
     def _simbol_dalam_sesi(self, simbol):
         """
-        Filter sesi per-simbol — lebih banyak peluang trade:
-          XAUUSDm  → sesi Asia + London + NY  (00:00–17:00 UTC) — emas aktif hampir 24h
-          USDJPYm  → sesi Asia + London + NY  (00:00–17:00 UTC) — JPY aktif di Asia
-          EUR/GBP  → sesi London + NY saja    (08:00–17:00 UTC)
+        Filter sesi per-simbol — EURUSD & GBPUSD saja:
+          London session : 14:00–23:00 WIB = 07:00–16:00 UTC
+          NY session     : 20:00–05:00 WIB = 13:00–22:00 UTC
+          Gabungan aktif : 07:00–22:00 UTC
         """
         if MODE_SIMULASI:
             return True
         jam = datetime.datetime.utcnow().hour
-        if "XAU" in simbol or "JPY" in simbol:
-            # Sesi Asia (00:00–08:00) + London/NY (08:00–17:00) = 00:00–17:00 UTC
-            return 0 <= jam < 17
-        return JAM_MULAI_SESI <= jam < JAM_AKHIR_SESI
+        return 7 <= jam < 22
 
     # ══════════════════════════════════════════════════════
     #  INDIKATOR
@@ -555,12 +617,83 @@ class ArgenBotPro:
         return True
 
     # ══════════════════════════════════════════════════════
+    #  VALIDASI MODAL KECIL
+    # ══════════════════════════════════════════════════════
+
+    def cek_keamanan_modal_kecil(self, saldo):
+        """Cek apakah modal kecil dan ubah parameter otomatis."""
+        if saldo < BATAS_MODAL_KECIL:
+            self.mode_modal_kecil = True
+            self.risiko_pct       = RISIKO_PERSEN_MODAL_KECIL
+            self.max_lot          = LOT_MAX_MODAL_KECIL
+            self.max_spread       = MAX_SPREAD_POIN
+            return True
+        else:
+            self.mode_modal_kecil = False
+            return False
+
+    # ══════════════════════════════════════════════════════
+    #  PAUSE RUGI 1 JAM
+    # ══════════════════════════════════════════════════════
+
+    def _cek_pause_rugi_1jam(self, ekuitas):
+        """
+        Pause bot 1 jam jika ekuitas turun > PAUSE_RUGI_1JAM_PERSEN% dalam 1 jam.
+        Return (boleh_lanjut: bool, pesan: str)
+        """
+        sekarang = _sekarang_wib()
+
+        # Jika sedang dalam masa pause, cek apakah sudah habis
+        if self._pause_rugi_1jam_hingga:
+            if sekarang < self._pause_rugi_1jam_hingga:
+                sisa = int((self._pause_rugi_1jam_hingga - sekarang).total_seconds() / 60)
+                return False, (
+                    f"⏸️ PAUSE AKTIF — rugi >{PAUSE_RUGI_1JAM_PERSEN}% dalam 1 jam | "
+                    f"Lanjut dalam {sisa} menit"
+                )
+            else:
+                # Pause selesai — reset snapshot
+                self._pause_rugi_1jam_hingga = None
+                self._ekuitas_snapshot_1jam  = ekuitas
+                self._waktu_snapshot_1jam    = sekarang
+                return True, ""
+
+        # Inisialisasi snapshot pertama
+        if self._waktu_snapshot_1jam is None:
+            self._ekuitas_snapshot_1jam = ekuitas
+            self._waktu_snapshot_1jam   = sekarang
+            return True, ""
+
+        # Perbarui snapshot jika sudah 1 jam
+        selisih_jam = (sekarang - self._waktu_snapshot_1jam).total_seconds() / 3600
+        if selisih_jam >= 1.0:
+            self._ekuitas_snapshot_1jam = ekuitas
+            self._waktu_snapshot_1jam   = sekarang
+            return True, ""
+
+        # Cek apakah loss dalam 1 jam melebihi batas
+        if self._ekuitas_snapshot_1jam > 0:
+            loss_pct = (
+                (self._ekuitas_snapshot_1jam - ekuitas) / self._ekuitas_snapshot_1jam
+            ) * 100
+            if loss_pct >= PAUSE_RUGI_1JAM_PERSEN:
+                self._pause_rugi_1jam_hingga = sekarang + datetime.timedelta(hours=1)
+                return False, (
+                    f"⏸️ Loss {loss_pct:.1f}% dalam 1 jam — bot PAUSE 1 JAM"
+                )
+
+        return True, ""
+
+    # ══════════════════════════════════════════════════════
     #  LOT DINAMIS BERBASIS RISIKO %
     # ══════════════════════════════════════════════════════
 
     def _hitung_lot_dinamis(self, saldo, simbol, sl_pips):
         if saldo <= 0 or sl_pips <= 0:
             return self.min_lot
+        # Mode modal kecil: gunakan lot tetap
+        if self.mode_modal_kecil:
+            return LOT_MAX_MODAL_KECIL
         pct_risiko = self._risiko_efektif(saldo)   # Gunakan risiko bertingkat
         risiko_usd = saldo * (pct_risiko / 100.0)
         nilai_pip  = _NILAI_PIP_MIKRO.get(simbol, 0.10)
@@ -883,6 +1016,15 @@ class ArgenBotPro:
         # Catat titik ekuitas untuk equity curve chart
         self._catat_ekuitas(saldo)
 
+        # ── Validasi Modal Kecil ──────────────────────────
+        self.cek_keamanan_modal_kecil(saldo)
+
+        # ── Pause Rugi 1 Jam ──────────────────────────────
+        boleh_lanjut, pesan_pause = self._cek_pause_rugi_1jam(ekuitas)
+        if not boleh_lanjut:
+            log.append(pesan_pause)
+            return log
+
         # Tampilkan fase pertumbuhan di setiap siklus (tidak ada auto-stop — makin besar makin baik)
         fase       = self._fase_pertumbuhan(saldo)
         risiko_eff = self._risiko_efektif(saldo)
@@ -921,10 +1063,23 @@ class ArgenBotPro:
                 return log
 
         for sim in self.daftar_simbol:
-            # Filter sesi per-simbol: XAU & JPY aktif di sesi Asia juga
+            # Filter sesi per-simbol
             if not self._simbol_dalam_sesi(sim):
                 log.append(f"⏰ {sim}: di luar sesi aktif — dilewati")
                 continue
+
+            # Mode modal kecil: batasi maksimal 1 posisi terbuka secara global
+            if self.mode_modal_kecil:
+                semua_posisi_aktif = mt5.positions_get()
+                total_posisi = len(
+                    [p for p in (semua_posisi_aktif or []) if p.magic == self.magic_number]
+                )
+                if total_posisi >= MAX_POSISI_MODAL_KECIL:
+                    log.append(
+                        f"🔒 {sim}: mode modal kecil — "
+                        f"maks {MAX_POSISI_MODAL_KECIL} posisi (aktif: {total_posisi}) — dilewati"
+                    )
+                    continue
 
             posisi = mt5.positions_get(symbol=sim)
             if posisi:
@@ -1039,6 +1194,13 @@ class ArgenBotPro:
             tp_harga = round(atr_harga * self.tp_atr_mult, info.digits)
             sl_pips  = round(sl_harga / info.point, 1)
             tp_pips  = round(tp_harga / info.point, 1)
+
+            # ── Mode modal kecil: clamp SL ke 15–30 poin, TP = 2× SL ──
+            if self.mode_modal_kecil:
+                sl_pips  = max(15, min(30, sl_pips))
+                tp_pips  = sl_pips * 2
+                sl_harga = round(sl_pips * info.point, info.digits)
+                tp_harga = round(tp_pips * info.point, info.digits)
 
             # ── Proteksi akun mikro: tolak jika SL terlalu besar ──
             batas_sl = self.max_sl_pips_xau if sim == "XAUUSDm" else self.max_sl_pips_forex

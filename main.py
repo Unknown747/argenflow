@@ -39,7 +39,7 @@ except Exception as e:
 
 MODE_DEMO     = os.getenv("MT5_DEMO", "true").lower() == "true"
 PORT          = int(os.getenv("PORT", "5000"))
-INTERVAL_SCAN = 15.0
+INTERVAL_SCAN = 3.0   # Scalping: scan setiap 3 detik
 
 pesan_ui: list[str] = []
 
@@ -216,6 +216,45 @@ async def ambil_trades():
     if not BOT_TERSEDIA or bot is None:
         return {"trades": []}
     return {"trades": bot.dapatkan_trades_terakhir(20)}
+
+
+@app.get("/api/modal_kecil/status")
+async def status_modal_kecil():
+    """Status mode modal kecil: lot, SL, TP, spread per simbol, dan sisa drawdown."""
+    if not BOT_TERSEDIA or bot is None:
+        return {"tersedia": False}
+
+    stat = bot.dapatkan_statistik()
+
+    # Ambil spread real-time per simbol dari MT5
+    spread_per_simbol = {}
+    if MT5_TERSEDIA:
+        try:
+            if mt5.terminal_info():
+                from bot_engine import SIMBOL_AKTIF
+                for sim in SIMBOL_AKTIF:
+                    info = mt5.symbol_info(sim)
+                    if info:
+                        spread_per_simbol[sim] = info.spread
+        except Exception:
+            pass
+
+    return {
+        "tersedia":               True,
+        "mode_modal_kecil":       stat.get("mode_modal_kecil", False),
+        "batas_modal_kecil_usd":  stat.get("batas_modal_kecil", 15.0),
+        "lot_saat_ini":           stat.get("lot_saat_ini", 0.01),
+        "sl_poin":                stat.get("sl_fixed_poin", 20),
+        "tp_poin":                stat.get("tp_fixed_poin", 40),
+        "max_spread_poin":        stat.get("max_spread_poin", 20),
+        "spread_per_simbol":      spread_per_simbol,
+        "sisa_drawdown_pct":      stat.get("sisa_drawdown_pct", 0.0),
+        "pause_rugi_1jam_aktif":  stat.get("pause_rugi_1jam_aktif", False),
+        "pause_rugi_1jam_sisa":   stat.get("pause_rugi_1jam_sisa", 0),
+        "simbol_aktif":           stat.get("simbol_aktif", ["EURUSDm", "GBPUSDm"]),
+        "pnl_hari_ini":           stat.get("pnl_hari_ini", 0.0),
+        "trade_hari_ini":         stat.get("trade_hari_ini", 0),
+    }
 
 
 @app.get("/api/noticias")
