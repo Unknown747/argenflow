@@ -84,7 +84,6 @@
     font-weight: 700;
     line-height: 1;
   }
-  .card-value.sm { font-size: 20px; }
   .card-sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
   .val-green { color: var(--green); }
   .val-red   { color: var(--red); }
@@ -118,9 +117,7 @@
   .dot-warn { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
 
   /* ── Progress bar ─────── */
-  .progress-wrap {
-    margin-top: 14px;
-  }
+  .progress-wrap { margin-top: 14px; }
   .progress-labels {
     display: flex;
     justify-content: space-between;
@@ -180,9 +177,12 @@
   /* ── Pasangan ─────────── */
   .pares-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 10px;
     margin-top: 4px;
+  }
+  @media (max-width: 700px) {
+    .pares-grid { grid-template-columns: repeat(2, 1fr); }
   }
   .par-item {
     background: var(--surface2);
@@ -217,34 +217,6 @@
   .log-info  { color: var(--blue); }
   .log-radar { color: var(--muted); }
   .log-time  { color: #374151; margin-right: 6px; }
-
-  /* ── Berita ───────────── */
-  .noticia-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 9px 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .noticia-item:last-child { border-bottom: none; }
-  .noticia-desc   { font-size: 13px; }
-  .noticia-tiempo { font-size: 11px; color: var(--yellow); white-space: nowrap; margin-left: 12px; }
-  .noticia-hora   { font-size: 11px; color: var(--muted); margin-left: 8px; }
-  .sin-noticias   { color: var(--muted); font-size: 13px; padding: 8px 0; }
-
-  /* ── Konfigurasi panel ── */
-  .cfg-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 6px 0;
-    border-bottom: 1px solid var(--border);
-    font-size: 12px;
-  }
-  .cfg-row:last-child { border-bottom: none; }
-  .cfg-key   { color: var(--muted); }
-  .cfg-val   { font-weight: 600; color: var(--teal); }
-  .batas-aktif { color: var(--red) !important; font-weight: 700; }
 </style>
 </head>
 <body>
@@ -299,7 +271,7 @@
     </div>
   </div>
 
-  <!-- Statistik harian (full width) -->
+  <!-- Statistik harian -->
   <div class="card card-full">
     <div class="card-label">Statistik Harian & Progress Pertumbuhan</div>
     <div class="stat-grid">
@@ -329,7 +301,7 @@
   <!-- Equity Curve Chart -->
   <div class="card card-full" style="padding-bottom:18px;">
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-      <div class="card-label">📈 Equity Curve — Pertumbuhan Modal (Tanpa Batas)</div>
+      <div class="card-label">📈 Equity Curve — Pertumbuhan Modal</div>
       <div style="display:flex; gap:16px; font-size:11px; color:var(--muted); flex-wrap:wrap;">
         <span><span style="display:inline-block;width:10px;height:2px;background:var(--blue);vertical-align:middle;margin-right:4px;border-radius:2px;"></span>Saldo</span>
         <span><span style="display:inline-block;width:10px;height:2px;background:#22c55e88;vertical-align:middle;margin-right:4px;border-radius:2px;border-top:2px dashed var(--green);"></span>Modal</span>
@@ -337,15 +309,8 @@
         <span><span style="display:inline-block;width:10px;height:2px;background:#a855f788;vertical-align:middle;margin-right:4px;border-radius:2px;border-top:2px dashed var(--purple);"></span>5× Modal</span>
       </div>
     </div>
-    <div style="position:relative; height:180px; margin-top:12px;">
+    <div style="position:relative; height:200px; margin-top:12px;">
       <canvas id="equity-chart"></canvas>
-    </div>
-    <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:11px; flex-wrap:wrap; gap:6px;">
-      <div style="color:var(--muted);">Modal awal: <span id="eq-modal-awal" style="color:var(--text); font-weight:600;">$—</span></div>
-      <div style="color:var(--muted);">Saldo tertinggi: <span id="eq-peak" style="color:var(--green); font-weight:600;">$—</span></div>
-      <div style="color:var(--muted);">Saldo terendah: <span id="eq-trough" style="color:var(--red); font-weight:600;">$—</span></div>
-      <div style="color:var(--muted);">Total profit: <span id="eq-growth" style="font-weight:600;">—</span></div>
-      <div style="color:var(--muted);">Milestone berikutnya: <span id="eq-next-milestone" style="color:var(--yellow); font-weight:600;">—</span></div>
     </div>
   </div>
 
@@ -379,115 +344,14 @@
     </div>
   </div>
 
-  <!-- Pasangan -->
-  <div class="card card-half">
+  <!-- Pasangan yang Dipantau -->
+  <div class="card card-full">
     <div class="card-label">Pasangan yang Dipantau</div>
     <div class="pares-grid">
-      <div class="par-item"><span class="par-name">EURUSDm</span><span class="par-ok">●</span></div>
-      <div class="par-item"><span class="par-name">GBPUSDm</span><span class="par-ok">●</span></div>
-      <div class="par-item"><span class="par-name">USDJPYm</span><span class="par-ok">●</span></div>
-      <div class="par-item"><span class="par-name">XAUUSDm</span><span class="par-ok">●</span></div>
-    </div>
-  </div>
-
-  <!-- Konfigurasi optimasi -->
-  <div class="card">
-    <div class="card-label">⚙️ Optimasi Aktif</div>
-    <div style="margin-top:6px;">
-      <div class="cfg-row">
-        <span class="cfg-key">SL = ATR ×</span>
-        <span class="cfg-val" id="sl-mult">1.5</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">TP = ATR ×</span>
-        <span class="cfg-val" id="tp-mult">3.0</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">Rasio R:R</span>
-        <span class="cfg-val">1 : 2</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">Filter H1 MTF</span>
-        <span class="cfg-val">✅ Aktif</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">Filter Korelasi</span>
-        <span class="cfg-val">✅ EUR↔GBP</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">RSI Beli / Jual</span>
-        <span class="cfg-val">&lt;32 / &gt;68</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">Ambang Skor</span>
-        <span class="cfg-val">80 (ketat)</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">Filter ADX (Sideways)</span>
-        <span class="cfg-val" id="adx-status">✅ ADX &gt; 28</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">Cooldown Per Simbol</span>
-        <span class="cfg-val" id="cooldown-status">⏳ 45 menit</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">Maks Trade / Hari</span>
-        <span class="cfg-val" id="max-trade-status">0 / 3 trade</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">Maks SL Forex</span>
-        <span class="cfg-val" id="max-sl-forex">20 pip</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">Maks SL XAU</span>
-        <span class="cfg-val" id="max-sl-xau">150 pip</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">Filter Senin/Jumat</span>
-        <span class="cfg-val">✅ Aktif</span>
-      </div>
-      <div class="cfg-row" id="batas-row">
-        <span class="cfg-key">Batas Rugi Hari Ini</span>
-        <span class="cfg-val" id="batas-status">Belum Tercapai</span>
-      </div>
-      <div style="border-top:1px solid var(--border); margin: 10px 0 8px;"></div>
-      <div class="card-label" style="font-size:10px; margin-bottom:6px; color:var(--muted);">⟳ TRAILING STOP DINAMIS</div>
-      <div class="cfg-row">
-        <span class="cfg-key">Mode Trailing</span>
-        <span class="cfg-val" id="trailing-mode">—</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">Breakeven @ TP</span>
-        <span class="cfg-val" id="trailing-be">—</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">Kunci Profit @ TP</span>
-        <span class="cfg-val" id="trailing-kunci">—</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">Fraksi Dikunci</span>
-        <span class="cfg-val" id="trailing-fraksi">—</span>
-      </div>
-      <div class="cfg-row">
-        <span class="cfg-key">Trailing Kontinu</span>
-        <span class="cfg-val" id="trailing-kontinu">—</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Berita -->
-  <div class="card card-full">
-    <div style="display:flex; gap:32px; flex-wrap:wrap;">
-      <div style="flex:1; min-width:220px;">
-        <div class="card-label">⚡ Berita Berdampak Tinggi Berikutnya</div>
-        <div id="proxima-noticia-box" style="margin-top:8px;">
-          <span class="sin-noticias">Memuat...</span>
-        </div>
-      </div>
-      <div style="flex:2; min-width:280px;">
-        <div class="card-label" style="margin-bottom:6px;">Kalender 24 jam ke depan</div>
-        <div id="noticias-lista"><span class="sin-noticias">—</span></div>
-      </div>
+      <div class="par-item"><span class="par-name">EURUSDm</span><span class="par-ok">● Aktif</span></div>
+      <div class="par-item"><span class="par-name">GBPUSDm</span><span class="par-ok">● Aktif</span></div>
+      <div class="par-item"><span class="par-name">USDJPYm</span><span class="par-ok">● Aktif</span></div>
+      <div class="par-item"><span class="par-name">XAUUSDm</span><span class="par-ok">● Aktif</span></div>
     </div>
   </div>
 
@@ -561,12 +425,12 @@
       const statusAI = data.ai_estado || '—';
       badgeAI.textContent = 'AI: ' + statusAI;
       badgeAI.className =
-        statusAI === 'PAUSA_NOTICIA' ? 'badge badge-pausa' :
-        statusAI === 'VOLÁTIL'       ? 'badge badge-volat' :
-                                       'badge badge-ai';
+        statusAI === 'JEDA_BERITA' ? 'badge badge-pausa' :
+        statusAI === 'VOLATIL'     ? 'badge badge-volat' :
+                                     'badge badge-ai';
 
       // Statistik harian
-      const s = data.statistik || {};
+      const s   = data.statistik || {};
       const pnl = s.pnl_hari_ini ?? 0;
       const pnlEl = document.getElementById('pnl-hari');
       pnlEl.textContent = (pnl >= 0 ? '+' : '') + fmt(pnl) + ' USD';
@@ -574,15 +438,12 @@
 
       document.getElementById('trade-count').textContent = s.trade_hari_ini ?? 0;
       document.getElementById('max-rugi-pct').textContent = (s.max_rugi_pct ?? 2.0).toFixed(1) + '%';
-      document.getElementById('sl-mult').textContent = (s.sl_atr_mult ?? 1.2).toFixed(1);
-      document.getElementById('tp-mult').textContent = (s.tp_atr_mult ?? 2.4).toFixed(1);
 
-      // ── Progress profit dari modal deposit (tanpa batas atas) ────────────
-      const awalModal  = s.saldo_awal_modal > 0 ? s.saldo_awal_modal : 0;
-      const saldoKini  = data.balance || 0;
-      const fase       = s.fase ?? 'PERTUMBUHAN';
-      const efektif    = s.risiko_efektif ?? 2.0;
-      const profitPct  = s.profit_pct ?? 0;
+      // ── Progress profit dari modal deposit ────────────
+      const awalModal = s.saldo_awal_modal > 0 ? s.saldo_awal_modal : 0;
+      const fase      = s.fase ?? 'PERTUMBUHAN';
+      const efektif   = s.risiko_efektif ?? 2.0;
+      const profitPct = s.profit_pct ?? 0;
 
       const progBar  = document.getElementById('progress-bar');
       const progPct  = document.getElementById('progress-pct');
@@ -590,8 +451,6 @@
       const faseStat = document.getElementById('fase-stat');
       const risikoEl = document.getElementById('risiko-pct');
 
-      // Bar visual: setiap 50% profit = satu "putaran" bar, makin gelap tiap siklus
-      // 0%→50% PERTUMBUHAN, 50%→150% AKSELERASI, 150%→300% PROTEKSI, 300%+ ULTRA
       let barWidth, barColor, pillBg, pillColor, faseLabel;
       if (fase === 'ULTRA') {
         barWidth = 100; barColor = 'var(--purple)'; pillBg = '#a855f722'; pillColor = 'var(--purple)';
@@ -614,7 +473,7 @@
         'Modal: $' + (awalModal > 0 ? fmt(awalModal) : '—');
       document.getElementById('target-label').textContent =
         'Profit: ' + (profitPct >= 0 ? '+' : '') + profitPct.toFixed(1) + '%';
-      progPct.textContent = (profitPct >= 0 ? '+' : '') + profitPct.toFixed(1) + '% profit dari modal';
+      progPct.textContent      = (profitPct >= 0 ? '+' : '') + profitPct.toFixed(1) + '% profit dari modal';
       progBar.style.width      = Math.max(0, barWidth).toFixed(1) + '%';
       progBar.style.background = barColor;
       progPct.style.color      = barColor;
@@ -626,80 +485,6 @@
       faseStat.style.color     = pillColor;
       risikoEl.textContent     = efektif.toFixed(1) + '%';
       risikoEl.style.color     = pillColor;
-
-      // Filter ADX
-      const adxEl = document.getElementById('adx-status');
-      if (s.adx_aktif !== false) {
-        adxEl.textContent = `✅ ADX > ${s.adx_min ?? 28}`;
-        adxEl.style.color = 'var(--teal)';
-      } else {
-        adxEl.textContent = '⛔ Nonaktif';
-        adxEl.style.color = 'var(--muted)';
-      }
-
-      // Cooldown & max trade
-      document.getElementById('cooldown-status').textContent = `⏳ ${s.cooldown_menit ?? 45} menit`;
-      document.getElementById('max-trade-status').textContent =
-        `${s.trade_hari_ini ?? 0} / ${s.max_trade_harian ?? 3} trade`;
-
-      // Batas SL mikro
-      document.getElementById('max-sl-forex').textContent = `${s.max_sl_pips_forex ?? 20} pip`;
-      document.getElementById('max-sl-xau').textContent   = `${s.max_sl_pips_xau ?? 150} pip`;
-
-      // Batas rugi
-      const batasEl = document.getElementById('batas-status');
-      if (s.batas_rugi_aktif) {
-        batasEl.textContent = '🛑 TERCAPAI — Bot Berhenti';
-        batasEl.className   = 'cfg-val batas-aktif';
-      } else {
-        batasEl.textContent = '✅ Belum Tercapai';
-        batasEl.className   = 'cfg-val';
-      }
-
-      // ── Trailing Stop Dinamis ────────────────────────
-      const trAktif  = s.trailing_aktif !== false;
-      const trBe     = s.trailing_be_efektif  ?? 50;
-      const trKunci  = s.trailing_kunci_efektif ?? 72;
-      const trFraksi = s.trailing_kunci_fraksi ?? 40;
-      const trKont   = s.trailing_kontinu ?? false;
-      const trFase   = s.fase ?? 'PERTUMBUHAN';
-
-      // Label mode berdasarkan fase
-      let trModeLabel, trModeColor;
-      if (!trAktif) {
-        trModeLabel = '⛔ Nonaktif'; trModeColor = 'var(--muted)';
-      } else if (trFase === 'PROTEKSI' || trFase === 'TARGET!') {
-        trModeLabel = '🛡 KETAT (Proteksi)'; trModeColor = 'var(--green)';
-      } else if (trFase === 'AKSELERASI') {
-        trModeLabel = '⚡ SEDANG (Akselerasi)'; trModeColor = 'var(--yellow)';
-      } else {
-        trModeLabel = '🚀 LONGGAR (Pertumbuhan)'; trModeColor = 'var(--blue)';
-      }
-
-      const trModeEl = document.getElementById('trailing-mode');
-      trModeEl.textContent = trModeLabel;
-      trModeEl.style.color = trModeColor;
-
-      document.getElementById('trailing-be').textContent    = `${trBe}% jarak TP`;
-      document.getElementById('trailing-kunci').textContent = `${trKunci}% jarak TP`;
-      document.getElementById('trailing-fraksi').textContent = `${trFraksi}% profit TP`;
-
-      const kontEl = document.getElementById('trailing-kontinu');
-      if (trKont) {
-        kontEl.textContent = '✅ Aktif — SL mengikuti harga';
-        kontEl.style.color = 'var(--green)';
-      } else {
-        kontEl.textContent = '— Tidak aktif';
-        kontEl.style.color = 'var(--muted)';
-      }
-
-      // Berita berikutnya
-      const bn    = data.proxima_noticia;
-      const bnBox = document.getElementById('proxima-noticia-box');
-      bnBox.innerHTML = bn
-        ? `<div style="color:var(--yellow);font-weight:700;font-size:14px;">${bn.descripcion}</div>
-           <div style="color:var(--muted);font-size:12px;margin-top:4px;">${bn.hora_utc} · dalam ${bn.en_minutos} menit</div>`
-        : '<span class="sin-noticias">Tidak ada berita dalam beberapa jam ke depan</span>';
 
       // Peringatan demo
       document.getElementById('demo-aviso').textContent =
@@ -764,31 +549,10 @@
     }
   }
 
-  async function ambilBerita() {
-    try {
-      const r    = await fetch('/api/noticias');
-      const data = await r.json();
-      const el   = document.getElementById('noticias-lista');
-      if (!data.noticias || !data.noticias.length) {
-        el.innerHTML = '<span class="sin-noticias">Tidak ada acara dalam 24 jam ke depan ✅</span>';
-        return;
-      }
-      el.innerHTML = data.noticias.map(n => `
-        <div class="noticia-item">
-          <span class="noticia-desc">${escapHtml(n.descripcion)}</span>
-          <span>
-            <span class="noticia-hora">${n.hora_utc}</span>
-            <span class="noticia-tiempo">dalam ${n.en_minutos}m</span>
-          </span>
-        </div>`).join('');
-    } catch(e) {}
-  }
-
   // ══════════════════════════════════════════════════════
   //  EQUITY CURVE CHART
   // ══════════════════════════════════════════════════════
 
-  // Warna milestone: Modal=hijau, 2×=kuning, 3×=oranye, 5×=ungu, 10×=merah
   const MILESTONE_COLORS = ['#22c55e', '#f59e0b', '#f97316', '#a855f7', '#ef4444'];
 
   let equityChart = null;
@@ -825,8 +589,7 @@
             fill: true,
             order: 1,
           },
-          // Datasets 1–5: milestone lines (ditambah dinamis saat data diterima)
-          buatDatasetMilestone('Modal',  '#22c55e', 0),
+          buatDatasetMilestone('Modal',    '#22c55e', 0),
           buatDatasetMilestone('2× Modal', '#f59e0b', 1),
           buatDatasetMilestone('3× Modal', '#f97316', 2),
           buatDatasetMilestone('5× Modal', '#a855f7', 3),
@@ -873,10 +636,10 @@
 
   async function perbarui_equity_chart() {
     try {
-      const r         = await fetch('/api/equity');
-      const data      = await r.json();
-      const titik     = data.titik      || [];
-      const modalAwal = data.modal_awal || 0;
+      const r          = await fetch('/api/equity');
+      const data       = await r.json();
+      const titik      = data.titik      || [];
+      const modalAwal  = data.modal_awal || 0;
       const milestones = data.milestones || [];
 
       if (!equityChart) return;
@@ -894,11 +657,9 @@
       equityChart.data.labels           = labels;
       equityChart.data.datasets[0].data = saldos;
 
-      // Isi milestone lines (datasets 1–5)
       for (let i = 0; i < 5; i++) {
         const ms = milestones[i];
         if (ms) {
-          // Hanya tampilkan milestone yang relevan (saldo sudah 50%+ dari milestone berikutnya)
           const visible = saldos.some(b => b >= ms.value * 0.5);
           equityChart.data.datasets[i + 1].data  = visible ? Array(n).fill(ms.value) : Array(n).fill(null);
           equityChart.data.datasets[i + 1].label = ms.label;
@@ -907,38 +668,15 @@
         }
       }
 
-      // Auto-scale Y penuh — tidak ada batas atas tetap
-      const allVals  = saldos.filter(v => v > 0);
-      const peak     = allVals.length ? Math.max(...allVals) : modalAwal;
-      const trough   = allVals.length ? Math.min(...allVals) : modalAwal;
-      // Y-max: tampilkan hingga milestone berikutnya yang belum tercapai
-      const nextMs   = milestones.find(ms => ms && ms.value > peak);
-      const yMax     = nextMs ? nextMs.value * 1.08 : peak * 1.15;
-      const yMin     = Math.max(0, trough * 0.96);
+      const allVals = saldos.filter(v => v > 0);
+      const peak    = allVals.length ? Math.max(...allVals) : modalAwal;
+      const trough  = allVals.length ? Math.min(...allVals) : modalAwal;
+      const nextMs  = milestones.find(ms => ms && ms.value > peak);
+      const yMax    = nextMs ? nextMs.value * 1.08 : peak * 1.15;
+      const yMin    = Math.max(0, trough * 0.96);
       equityChart.options.scales.y.min = parseFloat(yMin.toFixed(2));
       equityChart.options.scales.y.max = parseFloat(yMax.toFixed(2));
       equityChart.update('none');
-
-      // Update ringkasan bawah
-      const totalGrowth = modalAwal > 0 ? ((peak - modalAwal) / modalAwal * 100) : 0;
-      const growthColor = totalGrowth >= 0 ? 'var(--green)' : 'var(--red)';
-      document.getElementById('eq-modal-awal').textContent =
-        modalAwal > 0 ? '$' + modalAwal.toFixed(2) : '—';
-      document.getElementById('eq-peak').textContent =
-        allVals.length ? '$' + peak.toFixed(2) : '—';
-      document.getElementById('eq-trough').textContent =
-        allVals.length ? '$' + trough.toFixed(2) : '—';
-      const growthEl = document.getElementById('eq-growth');
-      growthEl.textContent = modalAwal > 0
-        ? (totalGrowth >= 0 ? '+' : '') + totalGrowth.toFixed(1) + '%' : '—';
-      growthEl.style.color = growthColor;
-      const nextMilestoneEl = document.getElementById('eq-next-milestone');
-      if (nextMs) {
-        nextMilestoneEl.textContent = nextMs.label + ' ($' + nextMs.value.toFixed(2) + ')';
-      } else {
-        nextMilestoneEl.textContent = '🎯 Semua milestone tercapai!';
-        nextMilestoneEl.style.color = 'var(--green)';
-      }
 
     } catch(e) {}
   }
@@ -949,8 +687,8 @@
 
   async function perbarui_trade_journal() {
     try {
-      const r    = await fetch('/api/trades');
-      const data = await r.json();
+      const r      = await fetch('/api/trades');
+      const data   = await r.json();
       const trades = data.trades || [];
       const tbody  = document.getElementById('journal-body');
       const counter = document.getElementById('journal-count');
@@ -966,7 +704,7 @@
       counter.textContent = trades.length + ' trade tercatat';
       tbody.innerHTML = trades.map((t, i) => {
         const arah      = (t.arah || '').toUpperCase();
-        const arahColor = arah === 'BUY' ? 'var(--green)' : 'var(--red)';
+        const arahColor = arah === 'BUY' || arah === 'BELI' ? 'var(--green)' : 'var(--red)';
         const isEven    = i % 2 === 1;
         const rowBg     = isEven ? 'background:rgba(255,255,255,0.02);' : '';
         return `<tr style="${rowBg} border-bottom:1px solid var(--border)20;">
@@ -987,12 +725,10 @@
   }
 
   ambilStatus();
-  ambilBerita();
   inisialisasiChart();
   perbarui_equity_chart();
   perbarui_trade_journal();
   setInterval(ambilStatus,            5000);
-  setInterval(ambilBerita,           60000);
   setInterval(perbarui_equity_chart,  15000);
   setInterval(perbarui_trade_journal, 30000);
 </script>
