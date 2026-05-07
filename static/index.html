@@ -310,15 +310,23 @@
       </div>
       <div class="cfg-row">
         <span class="cfg-key">Filter ADX (Sideways)</span>
-        <span class="cfg-val" id="adx-status">✅ ADX &gt; 25</span>
+        <span class="cfg-val" id="adx-status">✅ ADX &gt; 28</span>
       </div>
       <div class="cfg-row">
         <span class="cfg-key">Cooldown Per Simbol</span>
-        <span class="cfg-val" id="cooldown-status">⏳ 30 menit</span>
+        <span class="cfg-val" id="cooldown-status">⏳ 45 menit</span>
       </div>
       <div class="cfg-row">
         <span class="cfg-key">Maks Trade / Hari</span>
-        <span class="cfg-val" id="max-trade-status">5 trade</span>
+        <span class="cfg-val" id="max-trade-status">0 / 3 trade</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">Maks SL Forex</span>
+        <span class="cfg-val" id="max-sl-forex">20 pip</span>
+      </div>
+      <div class="cfg-row">
+        <span class="cfg-key">Maks SL XAU</span>
+        <span class="cfg-val" id="max-sl-xau">150 pip</span>
       </div>
       <div class="cfg-row">
         <span class="cfg-key">Filter Senin/Jumat</span>
@@ -437,7 +445,7 @@
       // Filter ADX
       const adxEl = document.getElementById('adx-status');
       if (s.adx_aktif !== false) {
-        adxEl.textContent = `✅ ADX > ${s.adx_min ?? 25}`;
+        adxEl.textContent = `✅ ADX > ${s.adx_min ?? 28}`;
         adxEl.style.color = 'var(--teal)';
       } else {
         adxEl.textContent = '⛔ Nonaktif';
@@ -445,9 +453,13 @@
       }
 
       // Cooldown & max trade
-      document.getElementById('cooldown-status').textContent = `⏳ ${s.cooldown_menit ?? 30} menit`;
+      document.getElementById('cooldown-status').textContent = `⏳ ${s.cooldown_menit ?? 45} menit`;
       document.getElementById('max-trade-status').textContent =
-        `${s.trade_hari_ini ?? 0} / ${s.max_trade_harian ?? 5} trade`;
+        `${s.trade_hari_ini ?? 0} / ${s.max_trade_harian ?? 3} trade`;
+
+      // Batas SL mikro
+      document.getElementById('max-sl-forex').textContent = `${s.max_sl_pips_forex ?? 20} pip`;
+      document.getElementById('max-sl-xau').textContent   = `${s.max_sl_pips_xau ?? 150} pip`;
 
       // Batas rugi
       const batasEl = document.getElementById('batas-status');

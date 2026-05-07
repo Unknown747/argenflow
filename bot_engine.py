@@ -85,10 +85,10 @@ class ArgenBotPro:
 
         # ── Parameter risiko (dari .env) ──────────────────
         self.risiko_pct          = float(os.getenv("RISIKO_PCT",      "1.0"))
-        self.max_lot             = float(os.getenv("MAX_LOT",         "0.10"))
+        self.max_lot             = float(os.getenv("MAX_LOT",         "0.01"))   # Mikro: maks 0.01 lot
         self.min_lot             = float(os.getenv("MIN_LOT",         "0.01"))
-        self.max_rugi_harian_pct = float(os.getenv("MAX_RUGI_HARIAN", "3.0"))
-        self.max_spread          = int(os.getenv("MAX_SPREAD",        "30"))
+        self.max_rugi_harian_pct = float(os.getenv("MAX_RUGI_HARIAN", "2.0"))   # Mikro: batas rugi 2%/hari
+        self.max_spread          = int(os.getenv("MAX_SPREAD",        "20"))     # Mikro: spread ketat
 
         # ── Parameter indikator (dari .env) ───────────────
         self.periode_rsi  = int(os.getenv("PERIODE_RSI", "14"))
@@ -99,21 +99,27 @@ class ArgenBotPro:
         self.rsi_jual_min = int(os.getenv("RSI_JUAL_MIN", "68"))
 
         # ── Multiplier SL/TP berbasis ATR (dari .env) ─────
-        self.sl_atr_mult = float(os.getenv("SL_ATR_MULT", "1.5"))
-        self.tp_atr_mult = float(os.getenv("TP_ATR_MULT", "3.0"))
+        self.sl_atr_mult = float(os.getenv("SL_ATR_MULT", "1.2"))   # Mikro: SL lebih ketat
+        self.tp_atr_mult = float(os.getenv("TP_ATR_MULT", "2.4"))   # Mikro: R:R 1:2 tetap terjaga
 
         # ── Trailing Stop (dari .env) ──────────────────────
         self.trailing_aktif     = os.getenv("TRAILING_AKTIF",    "true").lower() == "true"
-        self.trailing_be_pct    = float(os.getenv("TRAILING_BE_PCT",    "50"))
-        self.trailing_kunci_pct = float(os.getenv("TRAILING_KUNCI_PCT", "75"))
+        self.trailing_be_pct    = float(os.getenv("TRAILING_BE_PCT",    "40"))   # Mikro: BE lebih cepat
+        self.trailing_kunci_pct = float(os.getenv("TRAILING_KUNCI_PCT", "60"))   # Mikro: kunci profit lebih cepat
 
         # ── Optimasi tambahan (dari .env) ──────────────────
         self.adx_aktif        = os.getenv("ADX_AKTIF",   "true").lower() == "true"
-        self.adx_min          = int(os.getenv("ADX_MIN",          "25"))   # ADX < ini = sideways, skip
-        self.cooldown_menit   = int(os.getenv("COOLDOWN_MENIT",   "30"))   # Jeda min antar trade/simbol
-        self.max_trade_harian = int(os.getenv("MAX_TRADE_HARIAN", "5"))    # Maks order per hari
+        self.adx_min          = int(os.getenv("ADX_MIN",          "28"))   # Mikro: hanya tren lebih kuat
+        self.cooldown_menit   = int(os.getenv("COOLDOWN_MENIT",   "45"))   # Mikro: jeda lebih panjang
+        self.max_trade_harian = int(os.getenv("MAX_TRADE_HARIAN", "3"))    # Mikro: maks 3 trade/hari
         self.filter_senin     = os.getenv("FILTER_SENIN", "true").lower() == "true"
         self.filter_jumat     = os.getenv("FILTER_JUMAT", "true").lower() == "true"
+
+        # ── Batas SL maksimum per pip — lindungi akun kecil ─
+        # Forex (EURUSD/GBP/JPY): 0.01 lot × 1 pip = $0.10 → max SL 20 pip = $2.00 risiko
+        # XAU: 0.01 lot × 1 pip = $0.01 → max SL 150 pip = $1.50 risiko
+        self.max_sl_pips_forex = int(os.getenv("MAX_SL_PIPS_FOREX", "20"))
+        self.max_sl_pips_xau   = int(os.getenv("MAX_SL_PIPS_XAU",   "150"))
 
         # ── Tracking harian ───────────────────────────────
         self._saldo_awal_hari  = 0.0
@@ -134,7 +140,7 @@ class ArgenBotPro:
         if MODE_SIMULASI:
             mt5.initialize()
             mt5.login(self.login, self.password, self.server)
-            self._reset_tracker_harian(500.0)
+            self._reset_tracker_harian(7.5)   # Simulasi dengan saldo realistis $5-10
             return True, "Terhubung dalam Mode Simulasi (Linux/Termux)"
 
         if not mt5.initialize():
@@ -188,6 +194,8 @@ class ArgenBotPro:
             "adx_min":            self.adx_min,
             "cooldown_menit":     self.cooldown_menit,
             "max_trade_harian":   self.max_trade_harian,
+            "max_sl_pips_forex":  self.max_sl_pips_forex,
+            "max_sl_pips_xau":    self.max_sl_pips_xau,
         }
 
     # ══════════════════════════════════════════════════════
@@ -532,8 +540,8 @@ class ArgenBotPro:
             return log
 
         # Ambil data akun
-        saldo   = 500.0
-        ekuitas = 500.0
+        saldo   = 7.5
+        ekuitas = 7.5
         if mt5.terminal_info():
             info_akun = mt5.account_info()
             if info_akun:
@@ -666,6 +674,15 @@ class ArgenBotPro:
             tp_harga = round(atr_harga * self.tp_atr_mult, info.digits)
             sl_pips  = round(sl_harga / info.point, 1)
             tp_pips  = round(tp_harga / info.point, 1)
+
+            # ── Proteksi akun mikro: tolak jika SL terlalu besar ──
+            batas_sl = self.max_sl_pips_xau if sim == "XAUUSDm" else self.max_sl_pips_forex
+            if sl_pips > batas_sl:
+                log.append(
+                    f"⚠️ {sim}: ATR terlalu lebar (SL {sl_pips:.0f}p > maks {batas_sl}p) "
+                    f"— risiko terlalu besar untuk akun mikro, dilewati{label_sim}"
+                )
+                continue
 
             # Lot dinamis berbasis % risiko
             lot = self._hitung_lot_dinamis(saldo, sim, sl_pips)

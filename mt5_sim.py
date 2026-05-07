@@ -87,7 +87,7 @@ _harga_sekarang = dict(_HARGA_DASAR)
 _posisi_terbuka = {}    # simbol → list of _Posisi
 _koneksi_aktif  = False
 _nomor_tiket    = 10000
-_saldo_sim      = 500.0
+_saldo_sim      = 7.5     # Saldo simulasi realistis untuk akun mikro $5-10
 
 
 # ══════════════════════════════════════════════════════════
