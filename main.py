@@ -128,7 +128,6 @@ async def status():
             pass
 
     status_ai         = "MENGINISIALISASI"
-    berita_berikutnya = None
     statistik         = {
         "trade_hari_ini":   0,
         "pnl_hari_ini":     0.0,
@@ -145,9 +144,8 @@ async def status():
     }
 
     if BOT_TERSEDIA and bot is not None:
-        status_ai         = bot.ai.get_estado()
-        berita_berikutnya = bot.ai.get_proxima_noticia()
-        statistik         = bot.dapatkan_statistik()
+        status_ai = bot.ai.get_estado()
+        statistik = bot.dapatkan_statistik()
 
     return {
         "active":           BOT_TERSEDIA and bot.is_running,
@@ -159,7 +157,6 @@ async def status():
         "login":            login_id,
         "server":           server,
         "ai_estado":        status_ai,
-        "proxima_noticia":  berita_berikutnya,
         "new_logs":         log_dikirim,
         "mt5_available":    MT5_TERSEDIA,
         "statistik":        statistik,
@@ -260,31 +257,6 @@ async def status_modal_kecil():
         "trade_hari_ini":         stat.get("trade_hari_ini", 0),
     }
 
-
-@app.get("/api/noticias")
-async def ambil_berita():
-    import datetime
-    from ai_manager import BERITA_DAMPAK_TINGGI
-    WIB          = datetime.timezone(datetime.timedelta(hours=7))
-    sekarang_utc = datetime.datetime.now(datetime.UTC)
-    tahun        = sekarang_utc.year
-    hasil        = []
-    for item in BERITA_DAMPAK_TINGGI:
-        bulan, hari, jam_utc, deskripsi = item["bulan"], item["hari"], item["jam_utc"], item["deskripsi"]
-        try:
-            dt_utc = datetime.datetime(tahun, bulan, hari, jam_utc, 0, 0, tzinfo=datetime.UTC)
-        except ValueError:
-            continue
-        selisih_menit = (dt_utc - sekarang_utc).total_seconds() / 60
-        if 0 < selisih_menit <= 1440:
-            dt_wib = dt_utc + datetime.timedelta(hours=7)
-            hasil.append({
-                "descripcion": deskripsi,
-                "hora_utc":    dt_wib.strftime("%d/%m %H:%M WIB"),
-                "en_minutos":  int(selisih_menit),
-            })
-    hasil.sort(key=lambda x: x["en_minutos"])
-    return {"noticias": hasil}
 
 
 # ══════════════════════════════════════════════════════════

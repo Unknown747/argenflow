@@ -1063,15 +1063,6 @@ class ArgenBotPro:
         # Trailing stop — jalankan setiap siklus scan
         log.extend(self._monitor_trailing_stop())
 
-        ok, alasan_ai = self.ai.ok_untuk_trading()
-        if not ok:
-            if MODE_SIMULASI:
-                # Mode simulasi: tampilkan peringatan tapi tetap lanjut trading
-                log.append(alasan_ai + " [SIM: dilanjutkan]")
-            else:
-                log.append(alasan_ai)
-                return log
-
         for sim in self.daftar_simbol:
             # Filter sesi per-simbol
             if not self._simbol_dalam_sesi(sim):
