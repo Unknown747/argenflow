@@ -121,6 +121,16 @@ class ArgenBotPro:
         self.max_sl_pips_forex = int(os.getenv("MAX_SL_PIPS_FOREX", "20"))
         self.max_sl_pips_xau   = int(os.getenv("MAX_SL_PIPS_XAU",   "150"))
 
+        # ── Target pertumbuhan modal ──────────────────────
+        # Strategi: mulai $5-10, tumbuh hingga target, berhenti otomatis
+        # Fase PERTUMBUHAN  (saldo < 50% target) : risiko 2.0% — agresif
+        # Fase AKSELERASI   (50%-75% target)     : risiko 1.5% — moderat
+        # Fase PROTEKSI     (75%-100% target)    : risiko 1.0% — konservatif
+        # Fase TARGET!      (≥ 100% target)      : bot berhenti otomatis
+        self.saldo_target      = float(os.getenv("SALDO_TARGET", "20.0"))
+        self._saldo_awal_modal = 0.0   # Di-set sekali saat pertama connect
+        self._saldo_terakhir   = 0.0   # Saldo terakhir yang diketahui
+
         # ── Tracking harian ───────────────────────────────
         self._saldo_awal_hari  = 0.0
         self._tanggal_hari     = None
@@ -140,7 +150,10 @@ class ArgenBotPro:
         if MODE_SIMULASI:
             mt5.initialize()
             mt5.login(self.login, self.password, self.server)
-            self._reset_tracker_harian(7.5)   # Simulasi dengan saldo realistis $5-10
+            self._reset_tracker_harian(7.5)
+            if self._saldo_awal_modal <= 0:
+                self._saldo_awal_modal = 7.5
+            self._saldo_terakhir = 7.5
             return True, "Terhubung dalam Mode Simulasi (Linux/Termux)"
 
         if not mt5.initialize():
@@ -152,6 +165,9 @@ class ArgenBotPro:
         info = mt5.account_info()
         if info:
             self._reset_tracker_harian(info.balance)
+            if self._saldo_awal_modal <= 0:
+                self._saldo_awal_modal = info.balance
+            self._saldo_terakhir = info.balance
         return True, "Berhasil terhubung ke Exness"
 
     # ══════════════════════════════════════════════════════
@@ -178,12 +194,36 @@ class ArgenBotPro:
         self._batas_rugi_aktif = False
         return True
 
+    def _risiko_efektif(self, saldo):
+        """Risiko bertingkat: agresif di awal, konservatif mendekati target."""
+        if self.saldo_target <= 0 or saldo <= 0:
+            return self.risiko_pct
+        rasio = saldo / self.saldo_target
+        if rasio < 0.50:
+            return 2.0    # Fase PERTUMBUHAN — agresif
+        elif rasio < 0.75:
+            return 1.5    # Fase AKSELERASI — moderat
+        else:
+            return 1.0    # Fase PROTEKSI — konservatif
+
+    def _fase_pertumbuhan(self, saldo):
+        """Nama fase saat ini berdasarkan saldo vs target."""
+        if self.saldo_target <= 0:
+            return "AKTIF"
+        rasio = saldo / self.saldo_target
+        if rasio >= 1.0:    return "TARGET!"
+        elif rasio >= 0.75: return "PROTEKSI"
+        elif rasio >= 0.50: return "AKSELERASI"
+        else:               return "PERTUMBUHAN"
+
     def dapatkan_statistik(self):
+        risiko_eff = self._risiko_efektif(self._saldo_terakhir) if self._saldo_terakhir > 0 else 2.0
         return {
             "trade_hari_ini":     self._trade_hari_ini,
             "pnl_hari_ini":       self._pnl_hari_ini,
             "batas_rugi_aktif":   self._batas_rugi_aktif,
             "risiko_pct":         self.risiko_pct,
+            "risiko_efektif":     risiko_eff,
             "max_rugi_pct":       self.max_rugi_harian_pct,
             "sl_atr_mult":        self.sl_atr_mult,
             "tp_atr_mult":        self.tp_atr_mult,
@@ -196,6 +236,9 @@ class ArgenBotPro:
             "max_trade_harian":   self.max_trade_harian,
             "max_sl_pips_forex":  self.max_sl_pips_forex,
             "max_sl_pips_xau":    self.max_sl_pips_xau,
+            "saldo_target":       self.saldo_target,
+            "saldo_awal_modal":   self._saldo_awal_modal,
+            "fase":               self._fase_pertumbuhan(self._saldo_terakhir) if self._saldo_terakhir > 0 else "PERTUMBUHAN",
         }
 
     # ══════════════════════════════════════════════════════
@@ -385,7 +428,8 @@ class ArgenBotPro:
     def _hitung_lot_dinamis(self, saldo, simbol, sl_pips):
         if saldo <= 0 or sl_pips <= 0:
             return self.min_lot
-        risiko_usd = saldo * (self.risiko_pct / 100.0)
+        pct_risiko = self._risiko_efektif(saldo)   # Gunakan risiko bertingkat
+        risiko_usd = saldo * (pct_risiko / 100.0)
         nilai_pip  = _NILAI_PIP_MIKRO.get(simbol, 0.10)
         lot        = round(round((risiko_usd / (sl_pips * nilai_pip)) / 0.01) * 0.01, 2)
         return max(self.min_lot, min(self.max_lot, lot))
@@ -548,6 +592,26 @@ class ArgenBotPro:
                 saldo   = info_akun.balance
                 ekuitas = info_akun.equity
                 self._reset_tracker_harian(saldo)
+
+        # Perbarui saldo terakhir & saldo awal modal
+        self._saldo_terakhir = saldo
+        if self._saldo_awal_modal <= 0:
+            self._saldo_awal_modal = saldo
+
+        # Cek target saldo tercapai — berhenti otomatis
+        if self.saldo_target > 0 and saldo >= self.saldo_target:
+            label = " [SIM]" if MODE_SIMULASI else ""
+            log.append(
+                f"🎯 TARGET TERCAPAI{label}! Saldo ${saldo:.2f} ≥ target ${self.saldo_target:.2f} "
+                f"— Bot berhenti otomatis. Selamat, ambil profit Anda!"
+            )
+            self.is_running = False
+            return log
+
+        # Tampilkan fase pertumbuhan di setiap siklus
+        fase = self._fase_pertumbuhan(saldo)
+        risiko_eff = self._risiko_efektif(saldo)
+        pct_menuju = round((saldo / self.saldo_target) * 100, 1) if self.saldo_target > 0 else 0
 
         # Cek batas rugi harian
         if not self._cek_batas_rugi_harian(ekuitas):

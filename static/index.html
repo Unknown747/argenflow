@@ -116,12 +116,55 @@
   .dot-off  { background: var(--muted); }
   .dot-warn { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
 
+  /* ── Progress bar ─────── */
+  .progress-wrap {
+    margin-top: 14px;
+  }
+  .progress-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .progress-track {
+    background: var(--surface2);
+    border-radius: 6px;
+    height: 10px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 6px;
+    transition: width .6s ease, background .4s;
+    background: var(--blue);
+  }
+  .progress-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    margin-top: 5px;
+  }
+  .fase-pill {
+    padding: 2px 9px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .4px;
+    border: 1px solid transparent;
+  }
+
   /* ── Statistik row ───── */
   .stat-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 10px;
     margin-top: 4px;
+  }
+  @media (max-width: 700px) {
+    .stat-grid { grid-template-columns: repeat(3, 1fr); }
   }
   .stat-item {
     background: var(--surface2);
@@ -217,11 +260,24 @@
 
 <main>
 
-  <!-- Saldo -->
+  <!-- Saldo + Progress pertumbuhan -->
   <div class="card">
     <div class="card-label">Saldo Akun</div>
     <div class="card-value" id="balance">—</div>
     <div class="card-sub" id="equity-row">Ekuitas: —</div>
+    <div class="progress-wrap">
+      <div class="progress-labels">
+        <span id="modal-awal-label">Modal: —</span>
+        <span id="target-label">Target: $20.00</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-bar"></div>
+      </div>
+      <div class="progress-meta">
+        <span id="progress-pct" style="color:var(--blue); font-weight:600;">0%</span>
+        <span class="fase-pill" id="fase-pill">—</span>
+      </div>
+    </div>
   </div>
 
   <!-- Status -->
@@ -244,7 +300,7 @@
 
   <!-- Statistik harian (full width) -->
   <div class="card card-full">
-    <div class="card-label">Statistik Harian & Konfigurasi Risiko</div>
+    <div class="card-label">Statistik Harian & Progress Pertumbuhan</div>
     <div class="stat-grid">
       <div class="stat-item">
         <div class="stat-label">P&L Hari Ini</div>
@@ -255,12 +311,16 @@
         <div class="stat-value" id="trade-count">0</div>
       </div>
       <div class="stat-item">
-        <div class="stat-label">Risiko / Trade</div>
-        <div class="stat-value val-green" id="risiko-pct">1.0%</div>
+        <div class="stat-label">Risiko Efektif</div>
+        <div class="stat-value" id="risiko-pct" style="color:var(--blue)">2.0%</div>
       </div>
       <div class="stat-item">
         <div class="stat-label">Batas Rugi / Hari</div>
-        <div class="stat-value" id="max-rugi-pct" style="color:var(--yellow)">3.0%</div>
+        <div class="stat-value" id="max-rugi-pct" style="color:var(--yellow)">2.0%</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Fase</div>
+        <div class="stat-value" id="fase-stat" style="font-size:13px; color:var(--blue)">—</div>
       </div>
     </div>
   </div>
@@ -437,10 +497,56 @@
       pnlEl.className   = 'stat-value ' + (pnl > 0 ? 'val-green' : pnl < 0 ? 'val-red' : 'val-muted');
 
       document.getElementById('trade-count').textContent = s.trade_hari_ini ?? 0;
-      document.getElementById('risiko-pct').textContent  = (s.risiko_pct ?? 1.0).toFixed(1) + '%';
-      document.getElementById('max-rugi-pct').textContent = (s.max_rugi_pct ?? 3.0).toFixed(1) + '%';
-      document.getElementById('sl-mult').textContent = (s.sl_atr_mult ?? 1.5).toFixed(1);
-      document.getElementById('tp-mult').textContent = (s.tp_atr_mult ?? 3.0).toFixed(1);
+      document.getElementById('max-rugi-pct').textContent = (s.max_rugi_pct ?? 2.0).toFixed(1) + '%';
+      document.getElementById('sl-mult').textContent = (s.sl_atr_mult ?? 1.2).toFixed(1);
+      document.getElementById('tp-mult').textContent = (s.tp_atr_mult ?? 2.4).toFixed(1);
+
+      // ── Progress pertumbuhan modal ────────────────────
+      const target     = s.saldo_target    ?? 20.0;
+      const awalModal  = s.saldo_awal_modal > 0 ? s.saldo_awal_modal : data.balance;
+      const saldoKini  = data.balance || 0;
+      const fase       = s.fase ?? 'PERTUMBUHAN';
+      const efektif    = s.risiko_efektif ?? 2.0;
+
+      const rasio      = target > 0 ? Math.min(saldoKini / target * 100, 100) : 0;
+      const progBar    = document.getElementById('progress-bar');
+      const progPct    = document.getElementById('progress-pct');
+      const fasePill   = document.getElementById('fase-pill');
+      const faseStat   = document.getElementById('fase-stat');
+      const risikoEl   = document.getElementById('risiko-pct');
+
+      document.getElementById('modal-awal-label').textContent =
+        'Modal: $' + (awalModal > 0 ? fmt(awalModal) : '—');
+      document.getElementById('target-label').textContent =
+        'Target: $' + fmt(target);
+      progPct.textContent = rasio.toFixed(1) + '% menuju target';
+      progBar.style.width = rasio.toFixed(1) + '%';
+
+      // Warna & label berdasarkan fase
+      let barColor, pillBg, pillColor, faseLabel;
+      if (fase === 'TARGET!' || saldoKini >= target) {
+        barColor = '#f59e0b'; pillBg = '#f59e0b22'; pillColor = '#f59e0b';
+        faseLabel = '🎯 TARGET!';
+      } else if (fase === 'PROTEKSI') {
+        barColor = 'var(--green)'; pillBg = '#22c55e22'; pillColor = 'var(--green)';
+        faseLabel = '🛡 PROTEKSI';
+      } else if (fase === 'AKSELERASI') {
+        barColor = 'var(--yellow)'; pillBg = '#f59e0b22'; pillColor = 'var(--yellow)';
+        faseLabel = '⚡ AKSELERASI';
+      } else {
+        barColor = 'var(--blue)'; pillBg = '#3b82f622'; pillColor = 'var(--blue)';
+        faseLabel = '🚀 PERTUMBUHAN';
+      }
+      progBar.style.background      = barColor;
+      progPct.style.color            = barColor;
+      fasePill.textContent           = faseLabel;
+      fasePill.style.background      = pillBg;
+      fasePill.style.color           = pillColor;
+      fasePill.style.borderColor     = pillColor + '44';
+      faseStat.textContent           = faseLabel;
+      faseStat.style.color           = pillColor;
+      risikoEl.textContent           = efektif.toFixed(1) + '%';
+      risikoEl.style.color           = pillColor;
 
       // Filter ADX
       const adxEl = document.getElementById('adx-status');

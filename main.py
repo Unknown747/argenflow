@@ -118,9 +118,13 @@ async def status():
         "pnl_hari_ini":     0.0,
         "batas_rugi_aktif": False,
         "risiko_pct":       1.0,
-        "max_rugi_pct":     3.0,
-        "sl_atr_mult":      1.5,
-        "tp_atr_mult":      3.0,
+        "risiko_efektif":   2.0,
+        "max_rugi_pct":     2.0,
+        "sl_atr_mult":      1.2,
+        "tp_atr_mult":      2.4,
+        "saldo_target":     20.0,
+        "saldo_awal_modal": 0.0,
+        "fase":             "PERTUMBUHAN",
     }
 
     if BOT_TERSEDIA and bot is not None:
