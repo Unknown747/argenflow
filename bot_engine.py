@@ -139,8 +139,20 @@ class ArgenBotPro:
         self._batas_rugi_aktif = False
         self._cooldown_simbol  = {}   # simbol → datetime WIB terakhir order dibuka
 
+        # ── Riwayat ekuitas (equity curve) ────────────────
+        # Setiap elemen: {"t": "HH:MM WIB", "b": float, "ts": epoch_ms}
+        # Max 300 titik — cukup untuk beberapa hari sesi trading
+        self._riwayat_ekuitas: list = []
+        self._MAX_RIWAYAT = 300
+
         self.ai = AIManager()
         self._inisialisasi_log()
+
+        # Seed data awal simulator supaya chart tidak kosong sebelum bot distart
+        if MODE_SIMULASI:
+            self._saldo_awal_modal = 7.5
+            self._saldo_terakhir   = 7.5
+            self._seed_riwayat_simulasi(7.5)
 
     # ══════════════════════════════════════════════════════
     #  KONEKSI
@@ -154,6 +166,8 @@ class ArgenBotPro:
             if self._saldo_awal_modal <= 0:
                 self._saldo_awal_modal = 7.5
             self._saldo_terakhir = 7.5
+            if not self._riwayat_ekuitas:
+                self._seed_riwayat_simulasi(7.5)
             return True, "Terhubung dalam Mode Simulasi (Linux/Termux)"
 
         if not mt5.initialize():
@@ -222,6 +236,51 @@ class ArgenBotPro:
             return {"be_pct": 40, "kunci_pct": 62, "kunci_fraksi": 0.52, "buffer_mult": 3, "kontinu": False}
         else:                  # PROTEKSI — ketat + trailing kontinu
             return {"be_pct": 28, "kunci_pct": 50, "kunci_fraksi": 0.65, "buffer_mult": 2, "kontinu": True}
+
+    def _catat_ekuitas(self, saldo):
+        """Simpan satu titik ke riwayat ekuitas. Panggil sekali per siklus scan."""
+        import time
+        sekarang = _sekarang_wib()
+        titik = {
+            "t":  sekarang.strftime("%d/%m %H:%M"),
+            "b":  round(saldo, 2),
+            "ts": int(time.time() * 1000),
+        }
+        self._riwayat_ekuitas.append(titik)
+        if len(self._riwayat_ekuitas) > self._MAX_RIWAYAT:
+            self._riwayat_ekuitas = self._riwayat_ekuitas[-self._MAX_RIWAYAT:]
+
+    def _seed_riwayat_simulasi(self, saldo_awal):
+        """Buat beberapa titik awal realistis untuk mode simulasi (agar chart tidak kosong)."""
+        import time, random
+        random.seed(42)
+        sekarang = _sekarang_wib()
+        titik_seed = 20
+        interval_menit = 15
+        saldo = saldo_awal
+        ts_now = int(time.time() * 1000)
+        titik_list = []
+        for i in range(titik_seed, 0, -1):
+            dt = sekarang - datetime.timedelta(minutes=interval_menit * i)
+            # Fluktuasi kecil realistis: ±0–1% per interval
+            gerak = random.uniform(-0.08, 0.12)
+            saldo = max(saldo_awal * 0.92, saldo + gerak)
+            titik_list.append({
+                "t":  dt.strftime("%d/%m %H:%M"),
+                "b":  round(saldo, 2),
+                "ts": ts_now - (interval_menit * i * 60 * 1000),
+            })
+        # Titik terakhir = saldo aktual
+        titik_list.append({
+            "t":  sekarang.strftime("%d/%m %H:%M"),
+            "b":  round(saldo_awal, 2),
+            "ts": ts_now,
+        })
+        self._riwayat_ekuitas = titik_list
+
+    def dapatkan_riwayat_ekuitas(self):
+        """Kembalikan salinan riwayat ekuitas untuk API endpoint."""
+        return list(self._riwayat_ekuitas)
 
     def _risiko_efektif(self, saldo):
         """Risiko bertingkat: agresif di awal, konservatif mendekati target."""
@@ -660,6 +719,9 @@ class ArgenBotPro:
         self._saldo_terakhir = saldo
         if self._saldo_awal_modal <= 0:
             self._saldo_awal_modal = saldo
+
+        # Catat titik ekuitas untuk equity curve chart
+        self._catat_ekuitas(saldo)
 
         # Cek target saldo tercapai — berhenti otomatis
         if self.saldo_target > 0 and saldo >= self.saldo_target:

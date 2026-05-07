@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ArgenFlow V5 — Dasbor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --bg:       #0f1117;
@@ -322,6 +323,28 @@
         <div class="stat-label">Fase</div>
         <div class="stat-value" id="fase-stat" style="font-size:13px; color:var(--blue)">—</div>
       </div>
+    </div>
+  </div>
+
+  <!-- Equity Curve Chart -->
+  <div class="card card-full" style="padding-bottom:18px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+      <div class="card-label">📈 Equity Curve — Pertumbuhan Modal</div>
+      <div style="display:flex; gap:16px; font-size:11px; color:var(--muted);">
+        <span><span style="display:inline-block;width:10px;height:2px;background:var(--blue);vertical-align:middle;margin-right:4px;border-radius:2px;"></span>Saldo</span>
+        <span><span style="display:inline-block;width:10px;height:2px;background:var(--green);vertical-align:middle;margin-right:4px;border-radius:2px; border-top: 2px dashed var(--green);"></span>Modal Deposit</span>
+        <span><span style="display:inline-block;width:10px;height:2px;background:var(--yellow);vertical-align:middle;margin-right:4px;border-radius:2px; border-top: 2px dashed var(--yellow);"></span>Target</span>
+      </div>
+    </div>
+    <div style="position:relative; height:180px; margin-top:12px;">
+      <canvas id="equity-chart"></canvas>
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:11px; flex-wrap:wrap; gap:6px;">
+      <div style="color:var(--muted);">Modal awal: <span id="eq-modal-awal" style="color:var(--text); font-weight:600;">$—</span></div>
+      <div style="color:var(--muted);">Saldo tertinggi: <span id="eq-peak" style="color:var(--green); font-weight:600;">$—</span></div>
+      <div style="color:var(--muted);">Saldo terendah: <span id="eq-trough" style="color:var(--red); font-weight:600;">$—</span></div>
+      <div style="color:var(--muted);">Total pertumbuhan: <span id="eq-growth" style="font-weight:600;">—</span></div>
+      <div style="color:var(--muted);">Target: <span id="eq-target" style="color:var(--yellow); font-weight:600;">$—</span></div>
     </div>
   </div>
 
@@ -727,10 +750,171 @@
     } catch(e) {}
   }
 
+  // ══════════════════════════════════════════════════════
+  //  EQUITY CURVE CHART
+  // ══════════════════════════════════════════════════════
+
+  let equityChart = null;
+
+  function inisialisasiChart() {
+    const ctx = document.getElementById('equity-chart').getContext('2d');
+    equityChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'Saldo',
+            data: [],
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59,130,246,0.08)',
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            tension: 0.35,
+            fill: true,
+            order: 1,
+          },
+          {
+            label: 'Modal Deposit',
+            data: [],
+            borderColor: '#22c55e',
+            borderWidth: 1.5,
+            borderDash: [6, 4],
+            pointRadius: 0,
+            tension: 0,
+            fill: false,
+            order: 2,
+          },
+          {
+            label: 'Target',
+            data: [],
+            borderColor: '#f59e0b',
+            borderWidth: 1.5,
+            borderDash: [4, 4],
+            pointRadius: 0,
+            tension: 0,
+            fill: false,
+            order: 3,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 400 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1a1d27',
+            borderColor: '#2e3350',
+            borderWidth: 1,
+            titleColor: '#64748b',
+            bodyColor: '#e2e8f0',
+            callbacks: {
+              label: ctx => {
+                if (ctx.datasetIndex === 0)
+                  return ' Saldo: $' + Number(ctx.raw).toFixed(2);
+                if (ctx.datasetIndex === 1)
+                  return ' Modal: $' + Number(ctx.raw).toFixed(2);
+                if (ctx.datasetIndex === 2)
+                  return ' Target: $' + Number(ctx.raw).toFixed(2);
+                return '';
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            ticks: {
+              color: '#64748b',
+              maxTicksLimit: 8,
+              font: { size: 10 },
+              maxRotation: 0,
+            },
+            grid: { color: '#2e3350', lineWidth: 0.5 },
+          },
+          y: {
+            ticks: {
+              color: '#64748b',
+              font: { size: 10 },
+              callback: v => '$' + Number(v).toFixed(2),
+            },
+            grid: { color: '#2e3350', lineWidth: 0.5 },
+          },
+        },
+      },
+    });
+  }
+
+  async function perbarui_equity_chart() {
+    try {
+      const r    = await fetch('/api/equity');
+      const data = await r.json();
+      const titik      = data.titik || [];
+      const modalAwal  = data.modal_awal  || 0;
+      const target     = data.saldo_target || 20;
+
+      if (!equityChart) return;
+      if (titik.length === 0) {
+        equityChart.data.labels           = ['—'];
+        equityChart.data.datasets[0].data = [null];
+        equityChart.data.datasets[1].data = [null];
+        equityChart.data.datasets[2].data = [null];
+        equityChart.update('none');
+        return;
+      }
+
+      const labels  = titik.map(p => p.t);
+      const saldos  = titik.map(p => p.b);
+      const modals  = titik.map(() => modalAwal > 0 ? modalAwal : null);
+      const targets = titik.map(() => target);
+
+      equityChart.data.labels              = labels;
+      equityChart.data.datasets[0].data    = saldos;
+      equityChart.data.datasets[1].data    = modals;
+      equityChart.data.datasets[2].data    = targets;
+
+      // Auto-scale Y: dari sedikit di bawah titik terendah sampai di atas target
+      const allVals    = saldos.filter(v => v > 0);
+      const peak       = allVals.length ? Math.max(...allVals) : modalAwal;
+      const trough     = allVals.length ? Math.min(...allVals) : modalAwal;
+      const yMax       = Math.max(peak, target) * 1.05;
+      const yMin       = Math.max(0, trough * 0.97);
+      equityChart.options.scales.y.min = parseFloat(yMin.toFixed(2));
+      equityChart.options.scales.y.max = parseFloat(yMax.toFixed(2));
+
+      equityChart.update('none');
+
+      // Update ringkasan bawah chart
+      const totalGrowth = modalAwal > 0 ? ((peak - modalAwal) / modalAwal * 100) : 0;
+      const growthColor = totalGrowth >= 0 ? 'var(--green)' : 'var(--red)';
+      document.getElementById('eq-modal-awal').textContent =
+        modalAwal > 0 ? '$' + modalAwal.toFixed(2) : '—';
+      document.getElementById('eq-peak').textContent =
+        allVals.length ? '$' + peak.toFixed(2) : '—';
+      document.getElementById('eq-trough').textContent =
+        allVals.length ? '$' + trough.toFixed(2) : '—';
+      const growthEl = document.getElementById('eq-growth');
+      growthEl.textContent =
+        modalAwal > 0
+          ? (totalGrowth >= 0 ? '+' : '') + totalGrowth.toFixed(1) + '%'
+          : '—';
+      growthEl.style.color = growthColor;
+      document.getElementById('eq-target').textContent =
+        '$' + target.toFixed(2);
+
+    } catch(e) {}
+  }
+
   ambilStatus();
   ambilBerita();
-  setInterval(ambilStatus,  5000);
-  setInterval(ambilBerita, 60000);
+  inisialisasiChart();
+  perbarui_equity_chart();
+  setInterval(ambilStatus,          5000);
+  setInterval(ambilBerita,         60000);
+  setInterval(perbarui_equity_chart, 15000);
 </script>
 </body>
 </html>

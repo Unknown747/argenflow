@@ -175,6 +175,18 @@ async def toggle(active: bool):
     return {"status": "ok", "bot_active": bot.is_running}
 
 
+@app.get("/api/equity")
+async def ambil_ekuitas():
+    """Riwayat ekuitas untuk equity curve chart di dashboard."""
+    if not BOT_TERSEDIA or bot is None:
+        return {"titik": [], "modal_awal": 0.0, "saldo_target": 20.0}
+    return {
+        "titik":        bot.dapatkan_riwayat_ekuitas(),
+        "modal_awal":   bot._saldo_awal_modal,
+        "saldo_target": bot.saldo_target,
+    }
+
+
 @app.get("/api/noticias")
 async def ambil_berita():
     import datetime
