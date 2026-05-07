@@ -373,8 +373,11 @@ class _Posisi:
 #  FUNGSI API
 # ══════════════════════════════════════════════════════════
 
+_thread_dimulai = False   # guard: cegah spawn thread duplikat saat reconnect
+
+
 def initialize(*args, **kwargs):
-    global _koneksi_aktif, _saldo_sim
+    global _koneksi_aktif, _saldo_sim, _thread_dimulai
     _koneksi_aktif = True
     # Re-baca env var — memungkinkan SALDO_SIMULASI di-set setelah module load
     env_val = os.environ.get("SALDO_SIMULASI")
@@ -384,8 +387,10 @@ def initialize(*args, **kwargs):
         except ValueError:
             pass
     _perbarui_harga_live()
-    t = threading.Thread(target=_jadwal_update_harga, daemon=True)
-    t.start()
+    if not _thread_dimulai:
+        _thread_dimulai = True
+        t = threading.Thread(target=_jadwal_update_harga, daemon=True)
+        t.start()
     return True
 
 

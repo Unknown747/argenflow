@@ -177,12 +177,9 @@
   /* ── Pasangan ─────────── */
   .pares-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 10px;
     margin-top: 4px;
-  }
-  @media (max-width: 700px) {
-    .pares-grid { grid-template-columns: repeat(2, 1fr); }
   }
   .par-item {
     background: var(--surface2);
@@ -414,11 +411,8 @@
   <!-- Pasangan yang Dipantau -->
   <div class="card card-full">
     <div class="card-label">Pasangan yang Dipantau</div>
-    <div class="pares-grid">
-      <div class="par-item"><span class="par-name">EURUSDm</span><span class="par-ok">● Aktif</span></div>
-      <div class="par-item"><span class="par-name">GBPUSDm</span><span class="par-ok">● Aktif</span></div>
-      <div class="par-item"><span class="par-name">USDJPYm</span><span class="par-ok">● Aktif</span></div>
-      <div class="par-item"><span class="par-name">XAUUSDm</span><span class="par-ok">● Aktif</span></div>
+    <div class="pares-grid" id="pares-grid">
+      <div class="par-item"><span class="par-name">—</span><span class="par-ok">● Aktif</span></div>
     </div>
   </div>
 
@@ -606,6 +600,15 @@
           `Pause loss beruntun ${maksBeruntun}× aktif — lanjut dalam ${s.pause_beruntun_sisa ?? 0} menit`;
       } else {
         pauseBerBar.style.display = 'none';
+      }
+
+      // ── Pairs dinamis dari API (tidak hardcode) ────────
+      const pasGrid = document.getElementById('pares-grid');
+      const simAktif = s.simbol_aktif ?? [];
+      if (simAktif.length > 0) {
+        pasGrid.innerHTML = simAktif.map(sym =>
+          `<div class="par-item"><span class="par-name">${sym}</span><span class="par-ok">● Aktif</span></div>`
+        ).join('');
       }
 
       // Log

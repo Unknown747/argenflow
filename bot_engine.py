@@ -217,8 +217,9 @@ class ArgenBotPro:
         self._cooldown_simbol  = {}   # simbol → datetime WIB terakhir order dibuka
 
         # ── Nilai asli parameter (untuk restore dari mode modal kecil) ─
-        self._max_lot_original    = float(os.getenv("MAX_LOT",    "0.01"))
-        self._max_spread_original = int(os.getenv("MAX_SPREAD",   str(MAX_SPREAD_POIN)))
+        self._max_lot_original      = float(os.getenv("MAX_LOT",     "0.01"))
+        self._max_spread_original   = int(os.getenv("MAX_SPREAD",    str(MAX_SPREAD_POIN)))
+        self._risiko_pct_original   = float(os.getenv("RISIKO_PCT",  "1.0"))
 
         # ── Riwayat ekuitas (equity curve) ────────────────
         # Setiap elemen: {"t": "HH:MM WIB", "b": float, "ts": epoch_ms}
@@ -799,6 +800,7 @@ class ArgenBotPro:
             self.mode_modal_kecil = False
             self.max_lot          = self._max_lot_original
             self.max_spread       = self._max_spread_original
+            self.risiko_pct       = self._risiko_pct_original
             return False
 
     # ══════════════════════════════════════════════════════
@@ -1080,7 +1082,6 @@ class ArgenBotPro:
                     f"Profit: {simbol_p} | Tiket #{pos.ticket}"
                 )
                 self._pnl_hari_ini   += profit
-                self._trade_hari_ini += 1
                 self._saldo_terakhir += profit
                 self._catat_ekuitas(self._saldo_terakhir)
                 # Update win/loss counter & simpan stats harian
@@ -1200,7 +1201,6 @@ class ArgenBotPro:
             if sukses:
                 # Catat ke P&L harian
                 self._pnl_hari_ini     += profit_float
-                self._trade_hari_ini   += 1
                 self._saldo_terakhir   += profit_float
                 self._catat_ekuitas(self._saldo_terakhir)
                 # Update win/loss counter & simpan stats harian
@@ -1628,7 +1628,7 @@ class ArgenBotPro:
                 if penyesuaian is None:
                     log.append(f"🛑 {sim}: pasar VOLATIL — AIManager memblokir masuk{label_sim}")
                     continue
-                ambang = max(50, self.ambang_skor + penyesuaian)
+                ambang = max(10, self.ambang_skor + penyesuaian)
 
             # ── Skor sinyal: EMA M15 (40) + RSI (30) + Engulfing M5 (30) ──
             # RSI tidak mengurangi skor jika searah tren (uptrend+RSI tinggi = wajar).
