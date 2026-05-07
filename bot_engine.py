@@ -208,34 +208,34 @@ class ArgenBotPro:
         self._batas_rugi_aktif = False
         return True
 
+    def _profit_pct(self, saldo):
+        """Profit % dari modal awal deposit. Tak terbatas — makin besar makin baik."""
+        if self._saldo_awal_modal <= 0 or saldo <= 0:
+            return 0.0
+        return ((saldo - self._saldo_awal_modal) / self._saldo_awal_modal) * 100.0
+
     def _trailing_params(self, saldo):
         """
-        Agresivitas trailing stop disesuaikan otomatis berdasarkan fase pertumbuhan.
+        Agresivitas trailing stop disesuaikan otomatis berdasarkan profit % dari modal deposit.
+        TIDAK ADA batas target — sistem terus beradaptasi seiring profit bertumbuh.
 
-        Fase PERTUMBUHAN  (< 50% target) — LONGGAR: biarkan profit berlari
-          • BE dipicu pada 50% jarak TP  → masuk breakeven agak lambat
-          • Kunci dipicu pada 72% jarak TP → kunci 40% profit
-          • Tidak ada trailing kontinu
-
-        Fase AKSELERASI  (50–75% target) — SEDANG: seimbang antara profit & proteksi
-          • BE dipicu pada 40% jarak TP
-          • Kunci dipicu pada 62% jarak TP → kunci 52% profit
-
-        Fase PROTEKSI    (75–100% target) — KETAT: jaga modal yang hampir mencapai target
-          • BE dipicu pada 28% jarak TP  → breakeven sangat cepat
-          • Kunci dipicu pada 50% jarak TP → kunci 65% profit
-          • Trailing kontinu: setelah kunci, SL terus mengikuti harga
+        Fase PERTUMBUHAN  (profit < 50%)   — LONGGAR  : biarkan profit berlari
+        Fase AKSELERASI   (profit 50-150%) — SEDANG   : seimbang growth & proteksi
+        Fase PROTEKSI     (profit 150-300%)— KETAT    : jaga keuntungan besar
+        Fase ULTRA        (profit > 300%)  — ULTRA    : sangat konservatif, modal 4x+
         """
-        if self.saldo_target <= 0 or saldo <= 0:
+        if self._saldo_awal_modal <= 0 or saldo <= 0:
             return {"be_pct": self.trailing_be_pct, "kunci_pct": self.trailing_kunci_pct,
                     "kunci_fraksi": 0.50, "buffer_mult": 3, "kontinu": False}
-        rasio = saldo / self.saldo_target
-        if rasio < 0.50:       # PERTUMBUHAN — longgar
+        pct = self._profit_pct(saldo)
+        if pct < 50:            # PERTUMBUHAN — longgar
             return {"be_pct": 50, "kunci_pct": 72, "kunci_fraksi": 0.40, "buffer_mult": 3, "kontinu": False}
-        elif rasio < 0.75:     # AKSELERASI — sedang
+        elif pct < 150:         # AKSELERASI — sedang
             return {"be_pct": 40, "kunci_pct": 62, "kunci_fraksi": 0.52, "buffer_mult": 3, "kontinu": False}
-        else:                  # PROTEKSI — ketat + trailing kontinu
+        elif pct < 300:         # PROTEKSI — ketat + trailing kontinu
             return {"be_pct": 28, "kunci_pct": 50, "kunci_fraksi": 0.65, "buffer_mult": 2, "kontinu": True}
+        else:                   # ULTRA — sangat konservatif, modal sudah 4x lipat
+            return {"be_pct": 18, "kunci_pct": 38, "kunci_fraksi": 0.78, "buffer_mult": 2, "kontinu": True}
 
     def _catat_ekuitas(self, saldo):
         """Simpan satu titik ke riwayat ekuitas. Panggil sekali per siklus scan."""
@@ -283,26 +283,30 @@ class ArgenBotPro:
         return list(self._riwayat_ekuitas)
 
     def _risiko_efektif(self, saldo):
-        """Risiko bertingkat: agresif di awal, konservatif mendekati target."""
-        if self.saldo_target <= 0 or saldo <= 0:
-            return self.risiko_pct
-        rasio = saldo / self.saldo_target
-        if rasio < 0.50:
-            return 2.0    # Fase PERTUMBUHAN — agresif
-        elif rasio < 0.75:
-            return 1.5    # Fase AKSELERASI — moderat
-        else:
-            return 1.0    # Fase PROTEKSI — konservatif
+        """
+        Risiko bertingkat berbasis profit % dari modal deposit.
+        TIDAK ADA batas — semakin besar profit, semakin konservatif proteksi.
+        """
+        if self._saldo_awal_modal <= 0 or saldo <= 0:
+            return 2.0
+        pct = self._profit_pct(saldo)
+        if pct < 50:    return 2.0    # PERTUMBUHAN — agresif
+        elif pct < 150: return 1.5    # AKSELERASI — moderat
+        elif pct < 300: return 1.0    # PROTEKSI — konservatif
+        else:           return 0.7    # ULTRA — sangat konservatif (modal 4x+)
 
     def _fase_pertumbuhan(self, saldo):
-        """Nama fase saat ini berdasarkan saldo vs target."""
-        if self.saldo_target <= 0:
-            return "AKTIF"
-        rasio = saldo / self.saldo_target
-        if rasio >= 1.0:    return "TARGET!"
-        elif rasio >= 0.75: return "PROTEKSI"
-        elif rasio >= 0.50: return "AKSELERASI"
-        else:               return "PERTUMBUHAN"
+        """
+        Fase pertumbuhan berbasis profit % dari modal deposit.
+        Tanpa batas atas — makin besar profit makin baik.
+        """
+        if self._saldo_awal_modal <= 0:
+            return "PERTUMBUHAN"
+        pct = self._profit_pct(saldo)
+        if pct >= 300:  return "ULTRA"        # modal 4x lipat atau lebih
+        elif pct >= 150: return "PROTEKSI"   # modal 2.5x+
+        elif pct >= 50:  return "AKSELERASI" # profit 50-150%
+        else:            return "PERTUMBUHAN" # baru mulai
 
     def dapatkan_statistik(self):
         saldo_ref  = self._saldo_terakhir if self._saldo_terakhir > 0 else 0.0
@@ -325,6 +329,7 @@ class ArgenBotPro:
             "max_sl_pips_xau":    self.max_sl_pips_xau,
             "saldo_target":       self.saldo_target,
             "saldo_awal_modal":   self._saldo_awal_modal,
+            "profit_pct":         round(self._profit_pct(saldo_ref), 2) if saldo_ref > 0 else 0.0,
             "fase":               self._fase_pertumbuhan(saldo_ref) if saldo_ref > 0 else "PERTUMBUHAN",
             # Trailing stop dinamis — nilai efektif berdasarkan fase saat ini
             "trailing_aktif":         self.trailing_aktif,
@@ -723,20 +728,10 @@ class ArgenBotPro:
         # Catat titik ekuitas untuk equity curve chart
         self._catat_ekuitas(saldo)
 
-        # Cek target saldo tercapai — berhenti otomatis
-        if self.saldo_target > 0 and saldo >= self.saldo_target:
-            label = " [SIM]" if MODE_SIMULASI else ""
-            log.append(
-                f"🎯 TARGET TERCAPAI{label}! Saldo ${saldo:.2f} ≥ target ${self.saldo_target:.2f} "
-                f"— Bot berhenti otomatis. Selamat, ambil profit Anda!"
-            )
-            self.is_running = False
-            return log
-
-        # Tampilkan fase pertumbuhan di setiap siklus
-        fase = self._fase_pertumbuhan(saldo)
+        # Tampilkan fase pertumbuhan di setiap siklus (tidak ada auto-stop — makin besar makin baik)
+        fase       = self._fase_pertumbuhan(saldo)
         risiko_eff = self._risiko_efektif(saldo)
-        pct_menuju = round((saldo / self.saldo_target) * 100, 1) if self.saldo_target > 0 else 0
+        profit_pct = round(self._profit_pct(saldo), 1)
 
         # Cek batas rugi harian
         if not self._cek_batas_rugi_harian(ekuitas):
@@ -940,6 +935,20 @@ class ArgenBotPro:
     # ══════════════════════════════════════════════════════
     #  LOG CSV
     # ══════════════════════════════════════════════════════
+
+    def dapatkan_trades_terakhir(self, n=20):
+        """Baca N trade terakhir dari log CSV. Return list dict."""
+        trades = []
+        if not os.path.exists(FILE_LOG):
+            return trades
+        try:
+            with open(FILE_LOG, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    trades.append(row)
+            return trades[-n:][::-1]   # N terakhir, dibalik (terbaru di atas)
+        except Exception:
+            return []
 
     def _inisialisasi_log(self):
         if not os.path.exists(FILE_LOG):

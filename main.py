@@ -122,8 +122,9 @@ async def status():
         "max_rugi_pct":     2.0,
         "sl_atr_mult":      1.2,
         "tp_atr_mult":      2.4,
-        "saldo_target":     20.0,
+        "saldo_target":     0.0,
         "saldo_awal_modal": 0.0,
+        "profit_pct":       0.0,
         "fase":             "PERTUMBUHAN",
     }
 
@@ -177,14 +178,32 @@ async def toggle(active: bool):
 
 @app.get("/api/equity")
 async def ambil_ekuitas():
-    """Riwayat ekuitas untuk equity curve chart di dashboard."""
+    """Riwayat ekuitas + milestone lines untuk equity curve chart."""
     if not BOT_TERSEDIA or bot is None:
-        return {"titik": [], "modal_awal": 0.0, "saldo_target": 20.0}
+        return {"titik": [], "modal_awal": 0.0, "milestones": []}
+    modal = bot._saldo_awal_modal
+    milestones = []
+    if modal > 0:
+        milestones = [
+            {"label": "Modal",  "value": round(modal, 2)},
+            {"label": "2×",     "value": round(modal * 2, 2)},
+            {"label": "3×",     "value": round(modal * 3, 2)},
+            {"label": "5×",     "value": round(modal * 5, 2)},
+            {"label": "10×",    "value": round(modal * 10, 2)},
+        ]
     return {
-        "titik":        bot.dapatkan_riwayat_ekuitas(),
-        "modal_awal":   bot._saldo_awal_modal,
-        "saldo_target": bot.saldo_target,
+        "titik":      bot.dapatkan_riwayat_ekuitas(),
+        "modal_awal": modal,
+        "milestones": milestones,
     }
+
+
+@app.get("/api/trades")
+async def ambil_trades():
+    """Log trade terakhir dari CSV untuk trade journal di dashboard."""
+    if not BOT_TERSEDIA or bot is None:
+        return {"trades": []}
+    return {"trades": bot.dapatkan_trades_terakhir(20)}
 
 
 @app.get("/api/noticias")

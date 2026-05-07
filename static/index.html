@@ -269,13 +269,13 @@
     <div class="progress-wrap">
       <div class="progress-labels">
         <span id="modal-awal-label">Modal: —</span>
-        <span id="target-label">Target: $20.00</span>
+        <span id="target-label" style="color:var(--muted);">Profit: +0%</span>
       </div>
       <div class="progress-track">
         <div class="progress-fill" id="progress-bar"></div>
       </div>
       <div class="progress-meta">
-        <span id="progress-pct" style="color:var(--blue); font-weight:600;">0%</span>
+        <span id="progress-pct" style="color:var(--blue); font-weight:600;">+0.0% profit</span>
         <span class="fase-pill" id="fase-pill">—</span>
       </div>
     </div>
@@ -329,11 +329,12 @@
   <!-- Equity Curve Chart -->
   <div class="card card-full" style="padding-bottom:18px;">
     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-      <div class="card-label">📈 Equity Curve — Pertumbuhan Modal</div>
-      <div style="display:flex; gap:16px; font-size:11px; color:var(--muted);">
+      <div class="card-label">📈 Equity Curve — Pertumbuhan Modal (Tanpa Batas)</div>
+      <div style="display:flex; gap:16px; font-size:11px; color:var(--muted); flex-wrap:wrap;">
         <span><span style="display:inline-block;width:10px;height:2px;background:var(--blue);vertical-align:middle;margin-right:4px;border-radius:2px;"></span>Saldo</span>
-        <span><span style="display:inline-block;width:10px;height:2px;background:var(--green);vertical-align:middle;margin-right:4px;border-radius:2px; border-top: 2px dashed var(--green);"></span>Modal Deposit</span>
-        <span><span style="display:inline-block;width:10px;height:2px;background:var(--yellow);vertical-align:middle;margin-right:4px;border-radius:2px; border-top: 2px dashed var(--yellow);"></span>Target</span>
+        <span><span style="display:inline-block;width:10px;height:2px;background:#22c55e88;vertical-align:middle;margin-right:4px;border-radius:2px;border-top:2px dashed var(--green);"></span>Modal</span>
+        <span><span style="display:inline-block;width:10px;height:2px;background:#f59e0b88;vertical-align:middle;margin-right:4px;border-radius:2px;border-top:2px dashed var(--yellow);"></span>2× Modal</span>
+        <span><span style="display:inline-block;width:10px;height:2px;background:#a855f788;vertical-align:middle;margin-right:4px;border-radius:2px;border-top:2px dashed var(--purple);"></span>5× Modal</span>
       </div>
     </div>
     <div style="position:relative; height:180px; margin-top:12px;">
@@ -343,8 +344,38 @@
       <div style="color:var(--muted);">Modal awal: <span id="eq-modal-awal" style="color:var(--text); font-weight:600;">$—</span></div>
       <div style="color:var(--muted);">Saldo tertinggi: <span id="eq-peak" style="color:var(--green); font-weight:600;">$—</span></div>
       <div style="color:var(--muted);">Saldo terendah: <span id="eq-trough" style="color:var(--red); font-weight:600;">$—</span></div>
-      <div style="color:var(--muted);">Total pertumbuhan: <span id="eq-growth" style="font-weight:600;">—</span></div>
-      <div style="color:var(--muted);">Target: <span id="eq-target" style="color:var(--yellow); font-weight:600;">$—</span></div>
+      <div style="color:var(--muted);">Total profit: <span id="eq-growth" style="font-weight:600;">—</span></div>
+      <div style="color:var(--muted);">Milestone berikutnya: <span id="eq-next-milestone" style="color:var(--yellow); font-weight:600;">—</span></div>
+    </div>
+  </div>
+
+  <!-- Trade Journal -->
+  <div class="card card-full">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:6px;">
+      <div class="card-label">📋 Trade Journal — 20 Terakhir</div>
+      <span id="journal-count" style="font-size:11px; color:var(--muted);">—</span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table id="journal-table" style="width:100%; border-collapse:collapse; font-size:12px;">
+        <thead>
+          <tr style="color:var(--muted); border-bottom:1px solid var(--border);">
+            <th style="text-align:left; padding:6px 8px; font-weight:500;">Waktu</th>
+            <th style="text-align:left; padding:6px 8px; font-weight:500;">Simbol</th>
+            <th style="text-align:center; padding:6px 8px; font-weight:500;">Arah</th>
+            <th style="text-align:right; padding:6px 8px; font-weight:500;">Lot</th>
+            <th style="text-align:right; padding:6px 8px; font-weight:500;">Harga</th>
+            <th style="text-align:right; padding:6px 8px; font-weight:500;">SL pip</th>
+            <th style="text-align:right; padding:6px 8px; font-weight:500;">TP pip</th>
+            <th style="text-align:right; padding:6px 8px; font-weight:500;">R:R</th>
+            <th style="text-align:center; padding:6px 8px; font-weight:500;">Mode</th>
+          </tr>
+        </thead>
+        <tbody id="journal-body">
+          <tr><td colspan="9" style="text-align:center; color:var(--muted); padding:20px;">
+            Belum ada trade — jalankan bot untuk mulai trading
+          </td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 
@@ -546,52 +577,55 @@
       document.getElementById('sl-mult').textContent = (s.sl_atr_mult ?? 1.2).toFixed(1);
       document.getElementById('tp-mult').textContent = (s.tp_atr_mult ?? 2.4).toFixed(1);
 
-      // ── Progress pertumbuhan modal ────────────────────
-      const target     = s.saldo_target    ?? 20.0;
-      const awalModal  = s.saldo_awal_modal > 0 ? s.saldo_awal_modal : data.balance;
+      // ── Progress profit dari modal deposit (tanpa batas atas) ────────────
+      const awalModal  = s.saldo_awal_modal > 0 ? s.saldo_awal_modal : 0;
       const saldoKini  = data.balance || 0;
       const fase       = s.fase ?? 'PERTUMBUHAN';
       const efektif    = s.risiko_efektif ?? 2.0;
+      const profitPct  = s.profit_pct ?? 0;
 
-      const rasio      = target > 0 ? Math.min(saldoKini / target * 100, 100) : 0;
-      const progBar    = document.getElementById('progress-bar');
-      const progPct    = document.getElementById('progress-pct');
-      const fasePill   = document.getElementById('fase-pill');
-      const faseStat   = document.getElementById('fase-stat');
-      const risikoEl   = document.getElementById('risiko-pct');
+      const progBar  = document.getElementById('progress-bar');
+      const progPct  = document.getElementById('progress-pct');
+      const fasePill = document.getElementById('fase-pill');
+      const faseStat = document.getElementById('fase-stat');
+      const risikoEl = document.getElementById('risiko-pct');
+
+      // Bar visual: setiap 50% profit = satu "putaran" bar, makin gelap tiap siklus
+      // 0%→50% PERTUMBUHAN, 50%→150% AKSELERASI, 150%→300% PROTEKSI, 300%+ ULTRA
+      let barWidth, barColor, pillBg, pillColor, faseLabel;
+      if (fase === 'ULTRA') {
+        barWidth = 100; barColor = 'var(--purple)'; pillBg = '#a855f722'; pillColor = 'var(--purple)';
+        faseLabel = '💎 ULTRA';
+      } else if (fase === 'PROTEKSI') {
+        barWidth = Math.min(100, ((profitPct - 150) / 150) * 100);
+        barColor = 'var(--green)'; pillBg = '#22c55e22'; pillColor = 'var(--green)';
+        faseLabel = '🛡 PROTEKSI';
+      } else if (fase === 'AKSELERASI') {
+        barWidth = Math.min(100, ((profitPct - 50) / 100) * 100);
+        barColor = 'var(--yellow)'; pillBg = '#f59e0b22'; pillColor = 'var(--yellow)';
+        faseLabel = '⚡ AKSELERASI';
+      } else {
+        barWidth = Math.min(100, (profitPct / 50) * 100);
+        barColor = 'var(--blue)'; pillBg = '#3b82f622'; pillColor = 'var(--blue)';
+        faseLabel = '🚀 PERTUMBUHAN';
+      }
 
       document.getElementById('modal-awal-label').textContent =
         'Modal: $' + (awalModal > 0 ? fmt(awalModal) : '—');
       document.getElementById('target-label').textContent =
-        'Target: $' + fmt(target);
-      progPct.textContent = rasio.toFixed(1) + '% menuju target';
-      progBar.style.width = rasio.toFixed(1) + '%';
-
-      // Warna & label berdasarkan fase
-      let barColor, pillBg, pillColor, faseLabel;
-      if (fase === 'TARGET!' || saldoKini >= target) {
-        barColor = '#f59e0b'; pillBg = '#f59e0b22'; pillColor = '#f59e0b';
-        faseLabel = '🎯 TARGET!';
-      } else if (fase === 'PROTEKSI') {
-        barColor = 'var(--green)'; pillBg = '#22c55e22'; pillColor = 'var(--green)';
-        faseLabel = '🛡 PROTEKSI';
-      } else if (fase === 'AKSELERASI') {
-        barColor = 'var(--yellow)'; pillBg = '#f59e0b22'; pillColor = 'var(--yellow)';
-        faseLabel = '⚡ AKSELERASI';
-      } else {
-        barColor = 'var(--blue)'; pillBg = '#3b82f622'; pillColor = 'var(--blue)';
-        faseLabel = '🚀 PERTUMBUHAN';
-      }
-      progBar.style.background      = barColor;
-      progPct.style.color            = barColor;
-      fasePill.textContent           = faseLabel;
-      fasePill.style.background      = pillBg;
-      fasePill.style.color           = pillColor;
-      fasePill.style.borderColor     = pillColor + '44';
-      faseStat.textContent           = faseLabel;
-      faseStat.style.color           = pillColor;
-      risikoEl.textContent           = efektif.toFixed(1) + '%';
-      risikoEl.style.color           = pillColor;
+        'Profit: ' + (profitPct >= 0 ? '+' : '') + profitPct.toFixed(1) + '%';
+      progPct.textContent = (profitPct >= 0 ? '+' : '') + profitPct.toFixed(1) + '% profit dari modal';
+      progBar.style.width      = Math.max(0, barWidth).toFixed(1) + '%';
+      progBar.style.background = barColor;
+      progPct.style.color      = barColor;
+      fasePill.textContent     = faseLabel;
+      fasePill.style.background  = pillBg;
+      fasePill.style.color       = pillColor;
+      fasePill.style.borderColor = pillColor + '44';
+      faseStat.textContent     = faseLabel;
+      faseStat.style.color     = pillColor;
+      risikoEl.textContent     = efektif.toFixed(1) + '%';
+      risikoEl.style.color     = pillColor;
 
       // Filter ADX
       const adxEl = document.getElementById('adx-status');
@@ -754,7 +788,23 @@
   //  EQUITY CURVE CHART
   // ══════════════════════════════════════════════════════
 
+  // Warna milestone: Modal=hijau, 2×=kuning, 3×=oranye, 5×=ungu, 10×=merah
+  const MILESTONE_COLORS = ['#22c55e', '#f59e0b', '#f97316', '#a855f7', '#ef4444'];
+
   let equityChart = null;
+
+  function buatDatasetMilestone(label, color, n) {
+    return {
+      label, data: [],
+      borderColor: color,
+      borderWidth: 1,
+      borderDash: [5, 4],
+      pointRadius: 0,
+      tension: 0,
+      fill: false,
+      order: n + 2,
+    };
+  }
 
   function inisialisasiChart() {
     const ctx = document.getElementById('equity-chart').getContext('2d');
@@ -768,35 +818,19 @@
             data: [],
             borderColor: '#3b82f6',
             backgroundColor: 'rgba(59,130,246,0.08)',
-            borderWidth: 2,
+            borderWidth: 2.5,
             pointRadius: 0,
-            pointHoverRadius: 4,
+            pointHoverRadius: 5,
             tension: 0.35,
             fill: true,
             order: 1,
           },
-          {
-            label: 'Modal Deposit',
-            data: [],
-            borderColor: '#22c55e',
-            borderWidth: 1.5,
-            borderDash: [6, 4],
-            pointRadius: 0,
-            tension: 0,
-            fill: false,
-            order: 2,
-          },
-          {
-            label: 'Target',
-            data: [],
-            borderColor: '#f59e0b',
-            borderWidth: 1.5,
-            borderDash: [4, 4],
-            pointRadius: 0,
-            tension: 0,
-            fill: false,
-            order: 3,
-          },
+          // Datasets 1–5: milestone lines (ditambah dinamis saat data diterima)
+          buatDatasetMilestone('Modal',  '#22c55e', 0),
+          buatDatasetMilestone('2× Modal', '#f59e0b', 1),
+          buatDatasetMilestone('3× Modal', '#f97316', 2),
+          buatDatasetMilestone('5× Modal', '#a855f7', 3),
+          buatDatasetMilestone('10× Modal','#ef4444', 4),
         ],
       },
       options: {
@@ -812,36 +846,25 @@
             borderWidth: 1,
             titleColor: '#64748b',
             bodyColor: '#e2e8f0',
+            filter: item => item.datasetIndex === 0 || item.raw !== null,
             callbacks: {
               label: ctx => {
+                if (ctx.raw === null) return null;
                 if (ctx.datasetIndex === 0)
                   return ' Saldo: $' + Number(ctx.raw).toFixed(2);
-                if (ctx.datasetIndex === 1)
-                  return ' Modal: $' + Number(ctx.raw).toFixed(2);
-                if (ctx.datasetIndex === 2)
-                  return ' Target: $' + Number(ctx.raw).toFixed(2);
-                return '';
+                return ' ' + ctx.dataset.label + ': $' + Number(ctx.raw).toFixed(2);
               },
             },
           },
         },
         scales: {
           x: {
-            ticks: {
-              color: '#64748b',
-              maxTicksLimit: 8,
-              font: { size: 10 },
-              maxRotation: 0,
-            },
-            grid: { color: '#2e3350', lineWidth: 0.5 },
+            ticks: { color: '#64748b', maxTicksLimit: 8, font: { size: 10 }, maxRotation: 0 },
+            grid:  { color: '#2e3350', lineWidth: 0.5 },
           },
           y: {
-            ticks: {
-              color: '#64748b',
-              font: { size: 10 },
-              callback: v => '$' + Number(v).toFixed(2),
-            },
-            grid: { color: '#2e3350', lineWidth: 0.5 },
+            ticks: { color: '#64748b', font: { size: 10 }, callback: v => '$' + Number(v).toFixed(2) },
+            grid:  { color: '#2e3350', lineWidth: 0.5 },
           },
         },
       },
@@ -850,44 +873,53 @@
 
   async function perbarui_equity_chart() {
     try {
-      const r    = await fetch('/api/equity');
-      const data = await r.json();
-      const titik      = data.titik || [];
-      const modalAwal  = data.modal_awal  || 0;
-      const target     = data.saldo_target || 20;
+      const r         = await fetch('/api/equity');
+      const data      = await r.json();
+      const titik     = data.titik      || [];
+      const modalAwal = data.modal_awal || 0;
+      const milestones = data.milestones || [];
 
       if (!equityChart) return;
       if (titik.length === 0) {
-        equityChart.data.labels           = ['—'];
-        equityChart.data.datasets[0].data = [null];
-        equityChart.data.datasets[1].data = [null];
-        equityChart.data.datasets[2].data = [null];
+        equityChart.data.labels = ['—'];
+        equityChart.data.datasets.forEach(ds => ds.data = [null]);
         equityChart.update('none');
         return;
       }
 
-      const labels  = titik.map(p => p.t);
-      const saldos  = titik.map(p => p.b);
-      const modals  = titik.map(() => modalAwal > 0 ? modalAwal : null);
-      const targets = titik.map(() => target);
+      const labels = titik.map(p => p.t);
+      const saldos = titik.map(p => p.b);
+      const n      = titik.length;
 
-      equityChart.data.labels              = labels;
-      equityChart.data.datasets[0].data    = saldos;
-      equityChart.data.datasets[1].data    = modals;
-      equityChart.data.datasets[2].data    = targets;
+      equityChart.data.labels           = labels;
+      equityChart.data.datasets[0].data = saldos;
 
-      // Auto-scale Y: dari sedikit di bawah titik terendah sampai di atas target
-      const allVals    = saldos.filter(v => v > 0);
-      const peak       = allVals.length ? Math.max(...allVals) : modalAwal;
-      const trough     = allVals.length ? Math.min(...allVals) : modalAwal;
-      const yMax       = Math.max(peak, target) * 1.05;
-      const yMin       = Math.max(0, trough * 0.97);
+      // Isi milestone lines (datasets 1–5)
+      for (let i = 0; i < 5; i++) {
+        const ms = milestones[i];
+        if (ms) {
+          // Hanya tampilkan milestone yang relevan (saldo sudah 50%+ dari milestone berikutnya)
+          const visible = saldos.some(b => b >= ms.value * 0.5);
+          equityChart.data.datasets[i + 1].data  = visible ? Array(n).fill(ms.value) : Array(n).fill(null);
+          equityChart.data.datasets[i + 1].label = ms.label;
+        } else {
+          equityChart.data.datasets[i + 1].data = Array(n).fill(null);
+        }
+      }
+
+      // Auto-scale Y penuh — tidak ada batas atas tetap
+      const allVals  = saldos.filter(v => v > 0);
+      const peak     = allVals.length ? Math.max(...allVals) : modalAwal;
+      const trough   = allVals.length ? Math.min(...allVals) : modalAwal;
+      // Y-max: tampilkan hingga milestone berikutnya yang belum tercapai
+      const nextMs   = milestones.find(ms => ms && ms.value > peak);
+      const yMax     = nextMs ? nextMs.value * 1.08 : peak * 1.15;
+      const yMin     = Math.max(0, trough * 0.96);
       equityChart.options.scales.y.min = parseFloat(yMin.toFixed(2));
       equityChart.options.scales.y.max = parseFloat(yMax.toFixed(2));
-
       equityChart.update('none');
 
-      // Update ringkasan bawah chart
+      // Update ringkasan bawah
       const totalGrowth = modalAwal > 0 ? ((peak - modalAwal) / modalAwal * 100) : 0;
       const growthColor = totalGrowth >= 0 ? 'var(--green)' : 'var(--red)';
       document.getElementById('eq-modal-awal').textContent =
@@ -897,14 +929,60 @@
       document.getElementById('eq-trough').textContent =
         allVals.length ? '$' + trough.toFixed(2) : '—';
       const growthEl = document.getElementById('eq-growth');
-      growthEl.textContent =
-        modalAwal > 0
-          ? (totalGrowth >= 0 ? '+' : '') + totalGrowth.toFixed(1) + '%'
-          : '—';
+      growthEl.textContent = modalAwal > 0
+        ? (totalGrowth >= 0 ? '+' : '') + totalGrowth.toFixed(1) + '%' : '—';
       growthEl.style.color = growthColor;
-      document.getElementById('eq-target').textContent =
-        '$' + target.toFixed(2);
+      const nextMilestoneEl = document.getElementById('eq-next-milestone');
+      if (nextMs) {
+        nextMilestoneEl.textContent = nextMs.label + ' ($' + nextMs.value.toFixed(2) + ')';
+      } else {
+        nextMilestoneEl.textContent = '🎯 Semua milestone tercapai!';
+        nextMilestoneEl.style.color = 'var(--green)';
+      }
 
+    } catch(e) {}
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  TRADE JOURNAL
+  // ══════════════════════════════════════════════════════
+
+  async function perbarui_trade_journal() {
+    try {
+      const r    = await fetch('/api/trades');
+      const data = await r.json();
+      const trades = data.trades || [];
+      const tbody  = document.getElementById('journal-body');
+      const counter = document.getElementById('journal-count');
+
+      if (trades.length === 0) {
+        tbody.innerHTML =
+          '<tr><td colspan="9" style="text-align:center; color:var(--muted); padding:20px;">' +
+          'Belum ada trade — jalankan bot untuk mulai trading</td></tr>';
+        counter.textContent = '—';
+        return;
+      }
+
+      counter.textContent = trades.length + ' trade tercatat';
+      tbody.innerHTML = trades.map((t, i) => {
+        const arah      = (t.arah || '').toUpperCase();
+        const arahColor = arah === 'BUY' ? 'var(--green)' : 'var(--red)';
+        const isEven    = i % 2 === 1;
+        const rowBg     = isEven ? 'background:rgba(255,255,255,0.02);' : '';
+        return `<tr style="${rowBg} border-bottom:1px solid var(--border)20;">
+          <td style="padding:6px 8px; color:var(--muted); font-size:11px;">${t.timestamp_utc || '—'}</td>
+          <td style="padding:6px 8px; font-weight:600;">${t.simbol || '—'}</td>
+          <td style="padding:6px 8px; text-align:center;">
+            <span style="color:${arahColor}; font-weight:700; font-size:11px;">${arah || '—'}</span>
+          </td>
+          <td style="padding:6px 8px; text-align:right;">${t.lot || '—'}</td>
+          <td style="padding:6px 8px; text-align:right; font-size:11px;">${parseFloat(t.harga_masuk||0).toFixed(5)}</td>
+          <td style="padding:6px 8px; text-align:right; color:var(--red);">${t.sl_pips || '—'}</td>
+          <td style="padding:6px 8px; text-align:right; color:var(--green);">${t.tp_pips || '—'}</td>
+          <td style="padding:6px 8px; text-align:right; color:var(--teal);">${t.rr_ratio || '—'}</td>
+          <td style="padding:6px 8px; text-align:center; font-size:10px; color:var(--muted);">${t.mode || '—'}</td>
+        </tr>`;
+      }).join('');
     } catch(e) {}
   }
 
@@ -912,9 +990,11 @@
   ambilBerita();
   inisialisasiChart();
   perbarui_equity_chart();
-  setInterval(ambilStatus,          5000);
-  setInterval(ambilBerita,         60000);
-  setInterval(perbarui_equity_chart, 15000);
+  perbarui_trade_journal();
+  setInterval(ambilStatus,            5000);
+  setInterval(ambilBerita,           60000);
+  setInterval(perbarui_equity_chart,  15000);
+  setInterval(perbarui_trade_journal, 30000);
 </script>
 </body>
 </html>
