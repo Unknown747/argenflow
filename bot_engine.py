@@ -127,8 +127,8 @@ class ArgenBotPro:
         self.periode_rsi  = int(os.getenv("PERIODE_RSI", "14"))
         self.periode_ema  = int(os.getenv("PERIODE_EMA", "50"))
         self.periode_atr  = int(os.getenv("PERIODE_ATR", "14"))
-        # Skor 55 → EMA + RSI netral sudah cukup untuk masuk (40+15=55)
-        self.ambang_skor  = int(os.getenv("AMBANG_SKOR", "55"))
+        # Skor 40 — scalping: arah EMA saja sudah cukup sinyal, RSI & engulfing tambah bobot
+        self.ambang_skor  = int(os.getenv("AMBANG_SKOR", "40"))
         # RSI 40/60 → zona oversold/overbought lebih lebar, frekuensi trade 2× lebih banyak
         self.rsi_beli_max = int(os.getenv("RSI_BELI_MAX", "40"))
         self.rsi_jual_min = int(os.getenv("RSI_JUAL_MIN", "60"))
@@ -145,12 +145,12 @@ class ArgenBotPro:
 
         # ── Optimasi tambahan (dari .env) ──────────────────
         self.adx_aktif        = os.getenv("ADX_AKTIF",   "true").lower() == "true"
-        # ADX 25 → lebih permisif, tren moderat pun ikut (lebih banyak peluang)
-        self.adx_min          = int(os.getenv("ADX_MIN",          "25"))
-        # Cooldown 25 menit → re-entry lebih cepat jika ada sinyal baru
-        self.cooldown_menit   = int(os.getenv("COOLDOWN_MENIT",   "25"))
-        # 6 trade/hari → kompounding 2× lebih cepat dari sebelumnya (3 trade)
-        self.max_trade_harian = int(os.getenv("MAX_TRADE_HARIAN", "6"))
+        # ADX 20 — scalping: tren moderat sudah cukup (lebih banyak peluang masuk)
+        self.adx_min          = int(os.getenv("ADX_MIN",          "20"))
+        # Cooldown 5 menit — scalping: re-entry cepat setelah posisi tutup
+        self.cooldown_menit   = int(os.getenv("COOLDOWN_MENIT",   "5"))
+        # 10 trade/hari — scalping bisa lebih sering dari swing
+        self.max_trade_harian = int(os.getenv("MAX_TRADE_HARIAN", "10"))
         self.filter_senin     = os.getenv("FILTER_SENIN", "true").lower() == "true"
         self.filter_jumat     = os.getenv("FILTER_JUMAT", "true").lower() == "true"
 
@@ -589,6 +589,10 @@ class ArgenBotPro:
     # ══════════════════════════════════════════════════════
 
     def _konfirmasi_h1(self, simbol, arah):
+        # Di mode simulasi, H1 dihasilkan dari data acak independen terhadap M15
+        # sehingga filter ini tidak relevan dan memblokir sinyal yang valid
+        if MODE_SIMULASI:
+            return True
         ema_h1 = self._hitung_ema(simbol, mt5.TIMEFRAME_H1, self.periode_ema)
         tick   = mt5.symbol_info_tick(simbol)
         if ema_h1 is None or tick is None:
@@ -650,7 +654,10 @@ class ArgenBotPro:
         """
         Pause bot 1 jam jika ekuitas turun > PAUSE_RUGI_1JAM_PERSEN% dalam 1 jam.
         Return (boleh_lanjut: bool, pesan: str)
+        Di mode simulasi dilewati — floating P&L acak tidak merepresentasikan risiko nyata.
         """
+        if MODE_SIMULASI:
+            return True, ""
         sekarang = _sekarang_wib()
 
         # Jika sedang dalam masa pause, cek apakah sudah habis
@@ -857,6 +864,74 @@ class ArgenBotPro:
         return log
 
     # ══════════════════════════════════════════════════════
+    #  SIMULASI: ENFORCE SL/TP (terminal tidak otomatis di Linux)
+    # ══════════════════════════════════════════════════════
+
+    def _monitor_sl_tp_sim(self):
+        """
+        Di real MT5, terminal menutup posisi otomatis saat harga menyentuh SL/TP.
+        Di simulasi Linux, kita lakukan ini secara manual setiap siklus scan.
+        """
+        if not MODE_SIMULASI:
+            return []
+
+        log   = []
+        try:
+            semua_posisi = mt5.positions_get()
+        except Exception:
+            return log
+
+        if not semua_posisi:
+            return log
+
+        for pos in semua_posisi:
+            if pos.magic != self.magic_number:
+                continue
+
+            simbol = pos.symbol
+            sl     = getattr(pos, "sl", 0)
+            tp     = getattr(pos, "tp", 0)
+            tipe   = pos.type   # 0=BUY, 1=SELL
+
+            tick = mt5.symbol_info_tick(simbol)
+            if not tick:
+                continue
+
+            harga = tick.bid if tipe == 0 else tick.ask
+            alasan = None
+
+            if tipe == 0:   # BUY: TP saat bid >= tp, SL saat bid <= sl
+                if tp > 0 and harga >= tp:
+                    alasan = "TP"
+                elif sl > 0 and harga <= sl:
+                    alasan = "SL"
+            else:           # SELL: TP saat ask <= tp, SL saat ask >= sl
+                if tp > 0 and harga <= tp:
+                    alasan = "TP"
+                elif sl > 0 and harga >= sl:
+                    alasan = "SL"
+
+            if alasan is None:
+                continue
+
+            sukses, _ = self._tutup_posisi(pos)
+            if sukses:
+                pos._hitung_profit()
+                profit   = getattr(pos, "profit", 0.0)
+                emoji    = "💰" if alasan == "TP" else "🛑"
+                simbol_p = f"+${profit:.2f}" if profit >= 0 else f"-${abs(profit):.2f}"
+                log.append(
+                    f"{emoji} {alasan} HIT [SIM] — {simbol} | "
+                    f"Profit: {simbol_p} | Tiket #{pos.ticket}"
+                )
+                self._pnl_hari_ini   += profit
+                self._trade_hari_ini += 1
+                self._saldo_terakhir += profit
+                self._catat_ekuitas(self._saldo_terakhir)
+
+        return log
+
+    # ══════════════════════════════════════════════════════
     #  AUTO-CLOSE: TARGET PROFIT CEPAT (berbasis USD)
     # ══════════════════════════════════════════════════════
 
@@ -1057,6 +1132,9 @@ class ArgenBotPro:
             )
             return log
 
+        # Simulasi: enforce SL/TP (MT5 terminal tidak otomatis di Linux)
+        log.extend(self._monitor_sl_tp_sim())
+
         # Target Profit Cepat — auto-close saat profit USD tercapai
         log.extend(self._monitor_target_profit_cepat())
 
@@ -1202,15 +1280,16 @@ class ArgenBotPro:
                 tp_pips  = sl_pips * 2
                 sl_harga = round(sl_pips * info.point, info.digits)
                 tp_harga = round(tp_pips * info.point, info.digits)
-
-            # ── Proteksi akun mikro: tolak jika SL terlalu besar ──
-            batas_sl = self.max_sl_pips_xau if sim == "XAUUSDm" else self.max_sl_pips_forex
-            if sl_pips > batas_sl:
-                log.append(
-                    f"⚠️ {sim}: ATR terlalu lebar (SL {sl_pips:.0f}p > maks {batas_sl}p) "
-                    f"— risiko terlalu besar untuk akun mikro, dilewati{label_sim}"
-                )
-                continue
+                # Modal kecil sudah di-clamp — lewati cek max_sl_pips
+            else:
+                # ── Proteksi akun normal: tolak jika SL terlalu besar ──
+                batas_sl = self.max_sl_pips_xau if sim == "XAUUSDm" else self.max_sl_pips_forex
+                if sl_pips > batas_sl:
+                    log.append(
+                        f"⚠️ {sim}: ATR terlalu lebar (SL {sl_pips:.0f}p > maks {batas_sl}p) "
+                        f"— risiko terlalu besar untuk akun mikro, dilewati{label_sim}"
+                    )
+                    continue
 
             # Lot dinamis berbasis % risiko
             lot = self._hitung_lot_dinamis(saldo, sim, sl_pips)

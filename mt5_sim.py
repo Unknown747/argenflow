@@ -5,15 +5,11 @@ Meniru API MetaTrader5 secara lengkap menggunakan data
 pasar yang diambil dari Yahoo Finance (harga live) dengan
 fallback ke random walk jika tidak ada koneksi internet.
 
-Digunakan otomatis ketika library MetaTrader5 asli
-tidak tersedia (Linux, macOS, Termux/Android).
-
-Mendukung:
-  - TRADE_ACTION_DEAL  : buka posisi baru
-  - TRADE_ACTION_SLTP  : modifikasi SL/TP (trailing stop)
-  - positions_get      : ambil posisi dengan field sl, tp, magic
-  - account_info       : saldo, ekuitas, login, server
-  - copy_rates_from_pos: data OHLC realistis (random walk)
+PENTING — Cache Candle:
+  copy_rates_from_pos mengembalikan data yang SAMA dalam
+  jendela 10 detik. Ini memastikan EMA/RSI/ADX/H1 semua
+  dihitung dari seri harga yang konsisten, sehingga bot
+  bisa menghasilkan sinyal yang valid seperti di MT5 nyata.
 
 Mode: SIMULASI — tidak ada trading nyata.
 """
@@ -40,7 +36,7 @@ ORDER_TYPE_BUY  = 0
 ORDER_TYPE_SELL = 1
 
 TRADE_ACTION_DEAL = 1
-TRADE_ACTION_SLTP = 6    # Modifikasi SL/TP posisi terbuka
+TRADE_ACTION_SLTP = 6
 ORDER_TIME_GTC    = 1
 
 ORDER_FILLING_FOK    = 0
@@ -53,7 +49,7 @@ SYMBOL_FILLING_IOC = 2
 TRADE_RETCODE_DONE = 10009
 
 # ══════════════════════════════════════════════════════════
-#  HARGA DASAR FALLBACK (digunakan jika Yahoo Finance gagal)
+#  HARGA DASAR FALLBACK
 # ══════════════════════════════════════════════════════════
 
 _HARGA_DASAR_FALLBACK = {
@@ -84,7 +80,6 @@ _VOLATILITAS = {
     "XAUUSDm": 3.50,
 }
 
-# Ticker Yahoo Finance untuk setiap simbol
 _TICKER_YAHOO = {
     "EURUSDm": "EURUSD=X",
     "GBPUSDm": "GBPUSD=X",
@@ -92,15 +87,27 @@ _TICKER_YAHOO = {
     "XAUUSDm": "GC=F",
 }
 
-# State global simulator
+# ══════════════════════════════════════════════════════════
+#  STATE GLOBAL
+# ══════════════════════════════════════════════════════════
+
 _harga_sekarang = dict(_HARGA_DASAR_FALLBACK)
-_harga_dasar    = dict(_HARGA_DASAR_FALLBACK)   # diperbarui setelah fetch live
-_posisi_terbuka = {}    # simbol → list of _Posisi
+_harga_dasar    = dict(_HARGA_DASAR_FALLBACK)
+_posisi_terbuka = {}
 _koneksi_aktif  = False
 _nomor_tiket    = 10000
-_saldo_sim      = 7.5   # Saldo simulasi realistis untuk akun mikro $5-10
+_saldo_sim      = 7.5
 _waktu_update_terakhir = 0.0
-_INTERVAL_UPDATE_HARGA = 300   # detik — refresh harga live setiap 5 menit
+_INTERVAL_UPDATE_HARGA = 300
+
+# ── Cache candle — kunci konsistensi indikator ────────────
+_cache_candles: dict = {}   # (simbol, tf) -> list[dict]
+_cache_ts:      dict = {}   # (simbol, tf) -> float
+_CACHE_TTL = 10             # detik — konsisten dalam satu siklus scan 3 detik
+
+# ── Throttle harga — cegah drift berlebihan antar tick call ─
+_harga_ts: dict = {}        # simbol -> float (timestamp update terakhir)
+_HARGA_TTL = 3.0            # update harga maks sekali per 3 detik per simbol
 
 
 # ══════════════════════════════════════════════════════════
@@ -108,11 +115,6 @@ _INTERVAL_UPDATE_HARGA = 300   # detik — refresh harga live setiap 5 menit
 # ══════════════════════════════════════════════════════════
 
 def _ambil_harga_yahoo():
-    """
-    Ambil harga live dari Yahoo Finance untuk semua simbol.
-    Return dict simbol→harga, atau None jika gagal.
-    Timeout 5 detik agar tidak memblokir startup.
-    """
     try:
         import requests
         hasil = {}
@@ -122,8 +124,7 @@ def _ambil_harga_yahoo():
                 f"?interval=1m&range=1d"
             )
             r = requests.get(
-                url,
-                timeout=5,
+                url, timeout=5,
                 headers={"User-Agent": "Mozilla/5.0 (ArgenFlow/5.0)"},
             )
             data  = r.json()
@@ -136,29 +137,25 @@ def _ambil_harga_yahoo():
 
 
 def _perbarui_harga_live():
-    """
-    Coba ambil harga live dari Yahoo Finance.
-    Jika berhasil, perbarui _harga_dasar dan _harga_sekarang.
-    Jika gagal, tetap pakai nilai sebelumnya (tidak crash).
-    """
-    global _harga_dasar, _harga_sekarang, _waktu_update_terakhir
+    global _harga_dasar, _harga_sekarang, _waktu_update_terakhir, _cache_candles, _cache_ts
     hasil = _ambil_harga_yahoo()
     if hasil:
         _harga_dasar.update(hasil)
-        # Sinkronkan harga saat ini ke harga baru (reset drift kecil)
         for simbol, harga in hasil.items():
             _harga_sekarang[simbol] = harga
+        # Reset cache agar seri candle baru dimulai dari harga live
+        _cache_candles.clear()
+        _cache_ts.clear()
         _waktu_update_terakhir = time.time()
         print(
-            f"[mt5_sim] Harga live diperbarui: "
+            "[mt5_sim] Harga live: "
             + ", ".join(f"{s}={v}" for s, v in hasil.items())
         )
     else:
-        print("[mt5_sim] Gagal ambil harga live — tetap pakai harga sebelumnya")
+        print("[mt5_sim] Gagal ambil harga live — pakai harga sebelumnya")
 
 
 def _jadwal_update_harga():
-    """Thread background: perbarui harga live setiap _INTERVAL_UPDATE_HARGA detik."""
     while True:
         time.sleep(_INTERVAL_UPDATE_HARGA)
         if _koneksi_aktif:
@@ -166,15 +163,19 @@ def _jadwal_update_harga():
 
 
 # ══════════════════════════════════════════════════════════
-#  PEMBANGKIT HARGA REALISTIS (random walk antar fetch)
+#  PEMBANGKIT SERI HARGA — PERSISTENT + TRENDING
 # ══════════════════════════════════════════════════════════
 
 def _perbarui_harga(simbol):
-    """Gerakkan harga dengan random walk + mean reversion ringan terhadap harga live."""
-    global _harga_sekarang
-    vol   = _VOLATILITAS.get(simbol, 0.001)
-    gerak = random.gauss(0, vol * 0.3)
-    dasar = _harga_dasar[simbol]
+    """Gerakkan harga dengan random walk + mean reversion. Throttle: maks sekali per _HARGA_TTL detik."""
+    global _harga_sekarang, _harga_ts
+    now = time.time()
+    if now - _harga_ts.get(simbol, 0) < _HARGA_TTL:
+        return  # tidak update — terlalu cepat, pakai harga yang ada
+    _harga_ts[simbol] = now
+    vol    = _VOLATILITAS.get(simbol, 0.001)
+    gerak  = random.gauss(0, vol * 0.10)
+    dasar  = _harga_dasar[simbol]
     revert = (dasar - _harga_sekarang[simbol]) * 0.005
     _harga_sekarang[simbol] = round(
         _harga_sekarang[simbol] + gerak + revert,
@@ -182,55 +183,99 @@ def _perbarui_harga(simbol):
     )
 
 
-def _buat_candles(simbol, jumlah):
+def _buat_seri_awal(simbol, jumlah):
     """
-    Buat data candle OHLC realistis untuk indikator.
-    Penting: harga sekarang = close candle TERAKHIR (terbaru),
-    sehingga EMA/RSI dihitung terhadap harga live yang benar.
+    Bangun seri candle awal dengan TREN yang lebih kuat (75% kelanjutan).
+    Candle terakhir selalu ditutup di harga sekarang.
     """
     vol   = _VOLATILITAS.get(simbol, 0.001)
     digit = _DIGIT_SIMBOL.get(simbol, 5)
 
-    # ── Bangun daftar harga close mundur dari harga sekarang ──
     harga_akhir = _harga_sekarang.get(simbol, _harga_dasar.get(simbol, 1.0))
     closes = [harga_akhir]
-    # Tambahkan bias tren ringan (60% kemungkinan melanjutkan arah)
+
+    # 88% trend continuation → ADX > 20 secara konsisten → lebih banyak sinyal
     arah = 1 if random.random() > 0.5 else -1
-    for i in range(jumlah - 1):
-        if random.random() < 0.60:
+    for _ in range(jumlah - 1):
+        if random.random() < 0.88:
             gerak = abs(random.gauss(0, vol)) * arah
         else:
-            gerak = random.gauss(0, vol)
+            gerak = random.gauss(0, vol * 0.5)
             arah  = -arah
         closes.insert(0, round(closes[0] - gerak, digit))
 
-    # ── Bangun candle OHLC dari daftar close ──────────────────
     ts = int(time.time()) - jumlah * 900
     candles = []
     for i, tutup in enumerate(closes):
-        if i == 0:
-            buka = round(tutup - random.gauss(0, vol * 0.3), digit)
-        else:
-            buka = closes[i - 1]   # open = close candle sebelumnya
-        tinggi = round(max(buka, tutup) + abs(random.gauss(0, vol * 0.5)), digit)
-        rendah = round(min(buka, tutup) - abs(random.gauss(0, vol * 0.5)), digit)
+        buka = round(closes[i - 1], digit) if i > 0 else round(tutup - random.gauss(0, vol * 0.3), digit)
+        tinggi = round(max(buka, tutup) + abs(random.gauss(0, vol * 0.4)), digit)
+        rendah = round(min(buka, tutup) - abs(random.gauss(0, vol * 0.4)), digit)
         candles.append({
-            "time":        ts,
+            "time":        ts + i * 900,
             "open":        buka,
             "high":        tinggi,
             "low":         rendah,
             "close":       tutup,
             "tick_volume": random.randint(100, 2000),
-            "spread":      random.randint(5, 20),
+            "spread":      random.randint(5, 15),
             "real_volume": 0,
         })
-        ts += 900
-
     return candles
 
 
+def _tambah_candle_baru(simbol, seri_lama):
+    """Tambahkan satu candle baru ke ujung seri, menggeser harga menuju harga sekarang."""
+    vol   = _VOLATILITAS.get(simbol, 0.001)
+    digit = _DIGIT_SIMBOL.get(simbol, 5)
+    _perbarui_harga(simbol)
+
+    buka   = seri_lama[-1]["close"]
+    tutup  = _harga_sekarang[simbol]
+    tinggi = round(max(buka, tutup) + abs(random.gauss(0, vol * 0.4)), digit)
+    rendah = round(min(buka, tutup) - abs(random.gauss(0, vol * 0.4)), digit)
+    ts     = seri_lama[-1]["time"] + 900
+
+    return {
+        "time":        ts,
+        "open":        buka,
+        "high":        tinggi,
+        "low":         rendah,
+        "close":       tutup,
+        "tick_volume": random.randint(100, 2000),
+        "spread":      random.randint(5, 15),
+        "real_volume": 0,
+    }
+
+
+def _dapatkan_candles(simbol, timeframe, jumlah):
+    """
+    Kembalikan seri candle yang konsisten dalam jendela _CACHE_TTL detik.
+    Setelah TTL habis, candle baru ditambahkan ke ujung seri (bukan di-reset).
+    Ini memastikan EMA/RSI/ADX/H1 semua memakai data yang sama per siklus.
+    """
+    key = (simbol, timeframe)
+    now = time.time()
+    buffer = max(jumlah, 120)   # simpan buffer lebih besar dari yang diminta
+
+    if key not in _cache_candles:
+        # Inisialisasi seri pertama kali
+        _cache_candles[key] = _buat_seri_awal(simbol, buffer)
+        _cache_ts[key] = now
+    elif (now - _cache_ts[key]) > _CACHE_TTL:
+        # Tambah candle baru tanpa mereset seluruh seri
+        seri = _cache_candles[key]
+        seri.append(_tambah_candle_baru(simbol, seri))
+        # Jaga ukuran buffer
+        if len(seri) > buffer * 2:
+            _cache_candles[key] = seri[-buffer:]
+        _cache_ts[key] = now
+
+    seri = _cache_candles[key]
+    return seri[-jumlah:] if len(seri) >= jumlah else seri
+
+
 # ══════════════════════════════════════════════════════════
-#  KELAS-KELAS HASIL (meniru namedtuple MT5)
+#  KELAS-KELAS HASIL
 # ══════════════════════════════════════════════════════════
 
 class _InfoTerminal:
@@ -243,7 +288,6 @@ class _InfoAkun:
     def __init__(self):
         global _saldo_sim
         self.balance     = round(_saldo_sim, 2)
-        # Ekuitas = saldo ± floating profit semua posisi terbuka
         floating = sum(
             p.profit
             for lst in _posisi_terbuka.values()
@@ -260,7 +304,7 @@ class _InfoAkun:
 class _InfoSimbol:
     def __init__(self, simbol):
         self.name         = simbol
-        self.spread       = random.randint(5, 25)
+        self.spread       = random.randint(5, 18)   # lebih realistis, jarang >20
         self.digits       = _DIGIT_SIMBOL.get(simbol, 5)
         self.point        = _POIN_SIMBOL.get(simbol, 0.00001)
         self.filling_mode = SYMBOL_FILLING_IOC | SYMBOL_FILLING_FOK
@@ -274,7 +318,7 @@ class _Tick:
     def __init__(self, simbol):
         _perbarui_harga(simbol)
         h          = _harga_sekarang[simbol]
-        spread_val = _POIN_SIMBOL.get(simbol, 0.00001) * random.randint(5, 25)
+        spread_val = _POIN_SIMBOL.get(simbol, 0.00001) * random.randint(5, 15)
         self.last  = h
         self.ask   = round(h + spread_val, _DIGIT_SIMBOL.get(simbol, 5))
         self.bid   = round(h - spread_val, _DIGIT_SIMBOL.get(simbol, 5))
@@ -292,35 +336,40 @@ class _HasilOrder:
 
 
 class _Posisi:
-    """Posisi terbuka simulasi — mendukung field sl, tp, magic untuk trailing stop."""
     def __init__(self, simbol, tipe, harga_masuk, tiket, volume, sl, tp, magic):
         self.symbol     = simbol
-        self.type       = tipe           # 0=BUY, 1=SELL
+        self.type       = tipe
         self.price_open = harga_masuk
         self.volume     = volume
         self.ticket     = tiket
         self.magic      = magic
         self.sl         = sl
         self.tp         = tp
-        # Profit floating bergerak seiring harga
-        point = _POIN_SIMBOL.get(simbol, 0.00001)
-        harga_kini = _harga_sekarang.get(simbol, harga_masuk)
-        if tipe == 0:
-            self.profit = round((harga_kini - harga_masuk) / point * volume * 10, 2)
-        else:
-            self.profit = round((harga_masuk - harga_kini) / point * volume * 10, 2)
+        self._hitung_profit()
+
+    def _hitung_profit(self):
+        """
+        Profit floating dalam USD.
+        Formula MT5: price_diff / point * volume
+        Untuk EURUSD/GBPUSD 5-decimal: 1 pip = 10 point, 0.01 lot → $0.10/pip
+        Contoh: 10 pip naik × 0.01 lot → 0.0010 / 0.00001 * 0.01 = $1.00 ✓
+        """
+        point = _POIN_SIMBOL.get(self.symbol, 0.00001)
+        h = _harga_sekarang.get(self.symbol, self.price_open)
+        if self.type == 0:   # BUY: profit saat harga naik
+            self.profit = round((h - self.price_open) / point * self.volume, 2)
+        else:                # SELL: profit saat harga turun
+            self.profit = round((self.price_open - h) / point * self.volume, 2)
 
 
 # ══════════════════════════════════════════════════════════
-#  FUNGSI API (meniru MetaTrader5)
+#  FUNGSI API
 # ══════════════════════════════════════════════════════════
 
 def initialize(*args, **kwargs):
     global _koneksi_aktif
     _koneksi_aktif = True
-    # Ambil harga live saat pertama kali terhubung
     _perbarui_harga_live()
-    # Jalankan thread background untuk update berkala
     t = threading.Thread(target=_jadwal_update_harga, daemon=True)
     t.start()
     return True
@@ -362,66 +411,60 @@ def symbol_info_tick(simbol):
 
 
 def copy_rates_from_pos(simbol, timeframe, pos, jumlah):
+    """Kembalikan candle dari cache yang konsisten per siklus scan."""
     if simbol not in _harga_dasar:
         return None
-    return _buat_candles(simbol, jumlah)
+    return _dapatkan_candles(simbol, timeframe, jumlah)
 
 
 def positions_get(symbol=None, **kwargs):
-    """Kembalikan posisi terbuka, update profit floating dulu."""
     if symbol:
         daftar = _posisi_terbuka.get(symbol, [])
         if not daftar:
             return None
         for p in daftar:
-            point = _POIN_SIMBOL.get(p.symbol, 0.00001)
-            h = _harga_sekarang.get(p.symbol, p.price_open)
-            if p.type == 0:
-                p.profit = round((h - p.price_open) / point * p.volume * 10, 2)
-            else:
-                p.profit = round((p.price_open - h) / point * p.volume * 10, 2)
+            p._hitung_profit()
         return daftar
 
     semua = []
     for lst in _posisi_terbuka.values():
         for p in lst:
-            point = _POIN_SIMBOL.get(p.symbol, 0.00001)
-            h = _harga_sekarang.get(p.symbol, p.price_open)
-            if p.type == 0:
-                p.profit = round((h - p.price_open) / point * p.volume * 10, 2)
-            else:
-                p.profit = round((p.price_open - h) / point * p.volume * 10, 2)
+            p._hitung_profit()
         semua.extend(lst)
     return semua or None
 
 
 def order_send(request):
-    """
-    Tangani dua jenis aksi:
-      TRADE_ACTION_DEAL (1) — buka posisi baru
-      TRADE_ACTION_SLTP (6) — modifikasi SL/TP posisi terbuka
-    """
     global _nomor_tiket, _posisi_terbuka, _saldo_sim
 
     aksi = request.get("action", TRADE_ACTION_DEAL)
 
-    # ── Modifikasi SL/TP (Trailing Stop) ──────────────────
     if aksi == TRADE_ACTION_SLTP:
         simbol  = request.get("symbol", "")
         tiket   = request.get("position", 0)
         sl_baru = request.get("sl", 0)
         tp_baru = request.get("tp", 0)
-
-        daftar = _posisi_terbuka.get(simbol, [])
-        for pos in daftar:
+        for pos in _posisi_terbuka.get(simbol, []):
             if pos.ticket == tiket:
                 pos.sl = sl_baru
                 pos.tp = tp_baru
                 return _HasilOrder(retcode=TRADE_RETCODE_DONE, tiket=tiket)
-
         return _HasilOrder(retcode=10004, tiket=0)
 
-    # ── Buka Posisi Baru ──────────────────────────────────
+    # ── Close posisi yang sudah ada (TRADE_ACTION_DEAL + kunci "position") ──
+    tiket_tutup = request.get("position", 0)
+    if tiket_tutup:
+        simbol = request.get("symbol", "")
+        daftar = _posisi_terbuka.get(simbol, [])
+        for i, pos in enumerate(daftar):
+            if pos.ticket == tiket_tutup:
+                pos._hitung_profit()
+                _saldo_sim += pos.profit
+                daftar.pop(i)
+                return _HasilOrder(retcode=TRADE_RETCODE_DONE, tiket=tiket_tutup)
+        return _HasilOrder(retcode=10004, tiket=0)
+
+    # ── Buka posisi baru ──
     simbol = request.get("symbol", "")
     tipe   = request.get("type", 0)
     harga  = request.get("price", _harga_sekarang.get(simbol, 1.0))
