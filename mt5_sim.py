@@ -96,9 +96,16 @@ _harga_dasar    = dict(_HARGA_DASAR_FALLBACK)
 _posisi_terbuka = {}
 _koneksi_aktif  = False
 _nomor_tiket    = 10000
-_saldo_sim      = 7.5
+# Saldo simulasi — dibaca dari env var SALDO_SIMULASI, default $10
+_saldo_sim      = float(os.environ.get("SALDO_SIMULASI", "10.0"))
 _waktu_update_terakhir = 0.0
 _INTERVAL_UPDATE_HARGA = 300
+
+
+def set_saldo_simulasi(nilai: float):
+    """Set saldo simulasi dari API / dashboard sebelum bot dijalankan."""
+    global _saldo_sim
+    _saldo_sim = max(0.01, round(float(nilai), 2))
 
 # ── Cache candle — kunci konsistensi indikator ────────────
 _cache_candles: dict = {}   # (simbol, tf) -> list[dict]
@@ -367,8 +374,15 @@ class _Posisi:
 # ══════════════════════════════════════════════════════════
 
 def initialize(*args, **kwargs):
-    global _koneksi_aktif
+    global _koneksi_aktif, _saldo_sim
     _koneksi_aktif = True
+    # Re-baca env var — memungkinkan SALDO_SIMULASI di-set setelah module load
+    env_val = os.environ.get("SALDO_SIMULASI")
+    if env_val:
+        try:
+            _saldo_sim = float(env_val)
+        except ValueError:
+            pass
     _perbarui_harga_live()
     t = threading.Thread(target=_jadwal_update_harga, daemon=True)
     t.start()
