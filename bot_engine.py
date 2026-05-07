@@ -255,101 +255,102 @@ class ArgenBotPro:
         # Muat state tersimpan (setelah seed, agar bisa override)
         self._muat_state()
 
-# ═══════════════════════════════════════════════════════════════════
-#  DARURAT: VALIDASI MODAL & MARGIN UNTUK AKUN STANDARD $10
-# ═══════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════
+    #  DARURAT: VALIDASI MODAL & MARGIN UNTUK AKUN STANDARD $10
+    # ═══════════════════════════════════════════════════════════════════
 
-def cek_keamanan_modal_kecil(self):
-    """CEK WAJIB: Aktifkan mode darurat jika modal < $15"""
-    saldo = self.dapatkan_saldo()
-    
-    # Cek jenis akun berdasarkan margin requirement
-    margin_per_lot = self.dapatkan_margin_per_lot("EURUSDm")
-    is_standard_account = margin_per_lot > 1.0  # Standard account margin > $1 per 0.01 lot
-    
-    if saldo < BATAS_MODAL_KECIL or is_standard_account:
-        self.mode_modal_kecil = True
-        # Paksa parameter aman
-        self.risiko_pct = RISIKO_PERSEN_MODAL_KECIL  # 0.5%
-        self.max_lot = LOT_MAX_MODAL_KECIL  # 0.01
-        self.min_lot = LOT_MAX_MODAL_KECIL
-        self.max_positions = 1  # Hanya 1 posisi sekaligus
-        
-        # Paksa SL fixed ketat (bukan ATR)
-        self.sl_fixed_mode = True
-        self.sl_fixed_poin = SL_FIXED_POIN  # 20 poin
-        self.tp_fixed_poin = TP_FIXED_POIN  # 40 poin
-        
-        if is_standard_account:
-            print(f"[PERINGATAN] Akun STANDARD terdeteksi! Modal ${saldo} tidak cukup.")
-            print(f"           → WAJIB pindah ke CENT ACCOUNT untuk modal kecil.")
-        
-        return True
-    return False
+    def cek_keamanan_modal_kecil(self, saldo=None):
+        """CEK WAJIB: Aktifkan mode darurat jika modal < $15"""
+        if saldo is None:
+            saldo = self.dapatkan_saldo()
 
-def dapatkan_saldo(self):
-    """Ambil saldo dari MT5 atau mode simulasi"""
-    if MODE_SIMULASI or mt5 is None:
-        if self._saldo_terakhir > 0:
-            return self._saldo_terakhir
-        return _SALDO_SIM_DEFAULT
-    
-    try:
-        info = mt5.account_info()
-        if info:
-            self._saldo_terakhir = info.balance
-            return info.balance
-    except:
-        pass
-    return self._saldo_terakhir if self._saldo_terakhir > 0 else 10.0
+        # Cek jenis akun berdasarkan margin requirement
+        margin_per_lot = self.dapatkan_margin_per_lot("EURUSDm")
+        is_standard_account = margin_per_lot > 1.0  # Standard account margin > $1 per 0.01 lot
 
-def dapatkan_margin_per_lot(self, symbol):
-    """Hitung margin yang dibutuhkan untuk 0.01 lot (deteksi akun standard vs cent)"""
-    if MODE_SIMULASI or mt5 is None:
-        return 0.02  # Asumsi cent
-    
-    try:
-        info = mt5.symbol_info(symbol)
-        if info:
-            # Margin = (Lot × ContractSize) / Leverage
-            contract = info.trade_contract_size
-            margin_req = (0.01 * contract) / 500  # Asumsi leverage 1:500
-            return margin_req
-    except:
-        pass
-    return 2.0  # Default standard account
+        if saldo < BATAS_MODAL_KECIL or is_standard_account:
+            self.mode_modal_kecil = True
+            # Paksa parameter aman
+            self.risiko_pct = RISIKO_PERSEN_MODAL_KECIL  # 0.5%
+            self.max_lot = LOT_MAX_MODAL_KECIL  # 0.01
+            self.min_lot = LOT_MAX_MODAL_KECIL
+            self.max_positions = 1  # Hanya 1 posisi sekaligus
 
-def cek_margin_cukup(self, symbol, lot):
-    """CEK SEBELUM ORDER: Pastikan margin cukup"""
-    if MODE_SIMULASI:
-        return True
-    
-    try:
-        margin_required = mt5.order_calc_margin(mt5.ORDER_TYPE_BUY, symbol, lot, 0, 0)
-        if margin_required is None:
+            # Paksa SL fixed ketat (bukan ATR)
+            self.sl_fixed_mode = True
+            self.sl_fixed_poin = SL_FIXED_POIN  # 20 poin
+            self.tp_fixed_poin = TP_FIXED_POIN  # 40 poin
+
+            if is_standard_account:
+                print(f"[PERINGATAN] Akun STANDARD terdeteksi! Modal ${saldo} tidak cukup.")
+                print(f"           → WAJIB pindah ke CENT ACCOUNT untuk modal kecil.")
+
             return True
-        
-        ekuitas = self.dapatkan_ekuitas()
-        if ekuitas < margin_required * 1.5:  # Butuh 1.5x margin untuk aman
-            print(f"[REJECT] Margin tidak cukup: Ekuitas ${ekuitas} < 1.5× margin ${margin_required}")
-            return False
-        return True
-    except:
-        return True
+        return False
 
-def dapatkan_ekuitas(self):
-    """Ambil ekuitas dari MT5"""
-    if MODE_SIMULASI or mt5 is None:
+    def dapatkan_saldo(self):
+        """Ambil saldo dari MT5 atau mode simulasi"""
+        if MODE_SIMULASI or mt5 is None:
+            if self._saldo_terakhir > 0:
+                return self._saldo_terakhir
+            return _SALDO_SIM_DEFAULT
+
+        try:
+            info = mt5.account_info()
+            if info:
+                self._saldo_terakhir = info.balance
+                return info.balance
+        except Exception:
+            pass
+        return self._saldo_terakhir if self._saldo_terakhir > 0 else 10.0
+
+    def dapatkan_margin_per_lot(self, symbol):
+        """Hitung margin yang dibutuhkan untuk 0.01 lot (deteksi akun standard vs cent)"""
+        if MODE_SIMULASI or mt5 is None:
+            return 0.02  # Asumsi cent
+
+        try:
+            info = mt5.symbol_info(symbol)
+            if info:
+                # Margin = (Lot × ContractSize) / Leverage
+                contract = info.trade_contract_size
+                margin_req = (0.01 * contract) / 500  # Asumsi leverage 1:500
+                return margin_req
+        except Exception:
+            pass
+        return 2.0  # Default standard account
+
+    def cek_margin_cukup(self, symbol, lot):
+        """CEK SEBELUM ORDER: Pastikan margin cukup"""
+        if MODE_SIMULASI:
+            return True
+
+        try:
+            margin_required = mt5.order_calc_margin(mt5.ORDER_TYPE_BUY, symbol, lot, 0, 0)
+            if margin_required is None:
+                return True
+
+            ekuitas = self.dapatkan_ekuitas()
+            if ekuitas < margin_required * 1.5:  # Butuh 1.5x margin untuk aman
+                print(f"[REJECT] Margin tidak cukup: Ekuitas ${ekuitas} < 1.5× margin ${margin_required}")
+                return False
+            return True
+        except Exception:
+            return True
+
+    def dapatkan_ekuitas(self):
+        """Ambil ekuitas dari MT5"""
+        if MODE_SIMULASI or mt5 is None:
+            return self.dapatkan_saldo()
+
+        try:
+            info = mt5.account_info()
+            if info:
+                return info.equity
+        except Exception:
+            pass
         return self.dapatkan_saldo()
-    
-    try:
-        info = mt5.account_info()
-        if info:
-            return info.equity
-    except:
-        pass
-    return self.dapatkan_saldo()
-  
+
     # ══════════════════════════════════════════════════════
     #  KONEKSI
     # ══════════════════════════════════════════════════════
