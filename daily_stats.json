@@ -1,14 +1,14 @@
 {
   "tanggal": "2026-05-08",
-  "trade_count": 4,
-  "win_count": 3,
+  "trade_count": 1,
+  "win_count": 0,
   "loss_count": 1,
-  "win_rate_pct": 75.0,
-  "total_pnl": 0.45,
-  "avg_win": 0.2,
-  "avg_loss": 0.15,
-  "profit_factor": 4.0,
+  "win_rate_pct": 0.0,
+  "total_pnl": -0.45,
+  "avg_win": 0.0,
+  "avg_loss": 0.3,
+  "profit_factor": 0.0,
   "max_drawdown_pct": 1.5,
   "saldo_awal": 10.0,
-  "saldo_terakhir": 10.45
+  "saldo_terakhir": 9.7
 }

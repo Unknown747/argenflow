@@ -174,6 +174,27 @@
   .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
   .stat-value { font-size: 18px; font-weight: 700; margin-top: 4px; }
 
+  /* ── Posisi Terbuka ───── */
+  .pos-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .pos-table th {
+    text-align:left; padding:6px 10px; font-weight:500;
+    color:var(--muted); border-bottom:1px solid var(--border);
+  }
+  .pos-table td { padding:8px 10px; border-bottom:1px solid #1e2235; vertical-align:middle; }
+  .pos-table tr:last-child td { border-bottom:none; }
+  .pos-badge {
+    display:inline-block; padding:2px 8px; border-radius:4px;
+    font-size:10px; font-weight:700; letter-spacing:.5px;
+  }
+  .pos-buy  { background:#22c55e22; color:var(--green); border:1px solid #22c55e44; }
+  .pos-sell { background:#ef444422; color:var(--red);   border:1px solid #ef444444; }
+  .pos-bar-wrap {
+    background:var(--surface2); border-radius:4px; height:5px;
+    width:80px; overflow:hidden; display:inline-block; vertical-align:middle;
+  }
+  .pos-bar { height:100%; border-radius:4px; transition:width .4s; }
+  #pos-empty { text-align:center; color:var(--muted); padding:20px; font-size:12px; }
+
   /* ── Log ──────────────── */
   #log-box {
     background: #0a0c12;
@@ -384,6 +405,34 @@
           <tr><td colspan="9" style="text-align:center; color:var(--muted); padding:20px;">
             Belum ada trade — jalankan bot untuk mulai trading
           </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Posisi Terbuka -->
+  <div class="card card-full">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <div class="card-label" style="margin-bottom:0;">📊 Posisi Terbuka</div>
+      <span id="pos-count" style="font-size:11px; color:var(--muted);">—</span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="pos-table">
+        <thead>
+          <tr>
+            <th>Simbol</th>
+            <th>Arah</th>
+            <th style="text-align:right;">Lot</th>
+            <th style="text-align:right;">Entry</th>
+            <th style="text-align:right;">Harga Kini</th>
+            <th style="text-align:right;">SL pip</th>
+            <th style="text-align:right;">TP pip</th>
+            <th style="text-align:right;">Profit</th>
+            <th>Progress TP</th>
+          </tr>
+        </thead>
+        <tbody id="pos-body">
+          <tr><td colspan="9" id="pos-empty">Tidak ada posisi terbuka</td></tr>
         </tbody>
       </table>
     </div>
@@ -849,13 +898,61 @@
     } catch(e) {}
   }
 
+  async function perbarui_posisi() {
+    try {
+      const r    = await fetch('/api/positions');
+      const data = await r.json();
+      const posisi = data.posisi ?? [];
+      const tbody  = document.getElementById('pos-body');
+      const cntEl  = document.getElementById('pos-count');
+
+      if (posisi.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" id="pos-empty">Tidak ada posisi terbuka</td></tr>';
+        cntEl.textContent = '0 posisi';
+        return;
+      }
+
+      cntEl.textContent = posisi.length + ' posisi aktif';
+      tbody.innerHTML = posisi.map(p => {
+        const isBuy    = p.type === 'BUY';
+        const profitPos = p.profit >= 0;
+        const pnlStr   = (p.profit >= 0 ? '+' : '') + '$' + Math.abs(p.profit).toFixed(2);
+        const pnlColor = profitPos ? 'var(--green)' : 'var(--red)';
+        const pct      = Math.max(0, p.pct_tp);
+        const barColor = p.pct_tp < 0 ? 'var(--red)' : p.pct_tp >= 80 ? 'var(--green)' : 'var(--yellow)';
+        const pctLabel = p.pct_tp.toFixed(0) + '%';
+        return `
+          <tr>
+            <td style="font-weight:600;">${p.symbol}</td>
+            <td><span class="pos-badge ${isBuy ? 'pos-buy' : 'pos-sell'}">${p.type}</span></td>
+            <td style="text-align:right;">${p.lot}</td>
+            <td style="text-align:right; font-family:monospace;">${p.price_open}</td>
+            <td style="text-align:right; font-family:monospace;">${p.price_now}</td>
+            <td style="text-align:right; color:var(--red);">${p.sl_pip}</td>
+            <td style="text-align:right; color:var(--green);">${p.tp_pip}</td>
+            <td style="text-align:right; font-weight:700; color:${pnlColor};">${pnlStr}</td>
+            <td>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <div class="pos-bar-wrap">
+                  <div class="pos-bar" style="width:${pct}%; background:${barColor};"></div>
+                </div>
+                <span style="font-size:10px; color:${barColor}; min-width:28px;">${pctLabel}</span>
+              </div>
+            </td>
+          </tr>`;
+      }).join('');
+    } catch(e) {}
+  }
+
   ambilStatus();
   inisialisasiChart();
   perbarui_equity_chart();
   perbarui_trade_journal();
+  perbarui_posisi();
   setInterval(ambilStatus,            5000);
   setInterval(perbarui_equity_chart,  15000);
   setInterval(perbarui_trade_journal, 30000);
+  setInterval(perbarui_posisi,        3000);
 </script>
 </body>
 </html>

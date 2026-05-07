@@ -243,11 +243,18 @@ async def set_saldo(saldo: float):
         except Exception:
             pass
 
-    bot._saldo_awal_modal = round(saldo, 2)
-    bot._saldo_terakhir   = round(saldo, 2)
+    saldo_r = round(saldo, 2)
+    bot._saldo_awal_modal = saldo_r
+    bot._saldo_terakhir   = saldo_r
+    # Reset daily tracker — cegah false loss-limit karena saldo_awal_hari lama
+    bot._saldo_awal_hari  = saldo_r
+    bot._pnl_hari_ini     = 0.0
+    bot._trade_hari_ini   = 0
+    bot._batas_rugi_aktif = False
+    bot._tanggal_hari     = None   # paksa _reset_tracker_harian berjalan di scan pertama
     bot._riwayat_ekuitas  = []
-    bot._seed_riwayat_simulasi(round(saldo, 2))
-    return {"status": "ok", "saldo": round(saldo, 2)}
+    bot._seed_riwayat_simulasi(saldo_r)
+    return {"status": "ok", "saldo": saldo_r}
 
 
 @app.get("/api/modal_kecil/status")
@@ -331,6 +338,72 @@ async def emergency_stop(password: str = ""):
         "posisi_ditutup": posisi_ditutup,
         "errors":         errors,
     }
+
+
+@app.get("/api/positions")
+async def ambil_posisi():
+    """Posisi terbuka secara live — P&L, SL, TP, progress menuju TP."""
+    if not MT5_TERSEDIA:
+        return {"posisi": []}
+    try:
+        semua = mt5.positions_get()
+    except Exception:
+        return {"posisi": []}
+    if not semua:
+        return {"posisi": []}
+
+    hasil = []
+    for pos in semua:
+        if BOT_TERSEDIA and bot is not None and pos.magic != bot.magic_number:
+            continue
+        simbol = pos.symbol
+        tipe   = pos.type   # 0=BUY, 1=SELL
+        try:
+            tick = mt5.symbol_info_tick(simbol)
+            info = mt5.symbol_info(simbol)
+            harga_kini = round(tick.bid if tipe == 0 else tick.ask, info.digits) if (tick and info) else pos.price_open
+            point      = info.point if info else 0.00001
+            digit      = info.digits if info else 5
+        except Exception:
+            harga_kini = pos.price_open
+            point      = 0.00001
+            digit      = 5
+
+        profit      = round(getattr(pos, "profit", 0.0), 2)
+        price_open  = round(pos.price_open, digit)
+        sl          = round(pos.sl, digit) if pos.sl else 0
+        tp          = round(pos.tp, digit) if pos.tp else 0
+
+        # Hitung jarak SL & TP dalam pip
+        if tipe == 0:   # BUY
+            sl_pip = round((price_open - sl) / point, 1) if sl else 0
+            tp_pip = round((tp - price_open) / point, 1) if tp else 0
+            jarak_tp   = tp - price_open if tp else 0
+            profit_raw = harga_kini - price_open
+        else:           # SELL
+            sl_pip = round((sl - price_open) / point, 1) if sl else 0
+            tp_pip = round((price_open - tp) / point, 1) if tp else 0
+            jarak_tp   = price_open - tp if tp else 0
+            profit_raw = price_open - harga_kini
+
+        pct_tp = round((profit_raw / jarak_tp * 100), 1) if jarak_tp > 0 else 0.0
+
+        hasil.append({
+            "ticket":     pos.ticket,
+            "symbol":     simbol,
+            "type":       "BUY" if tipe == 0 else "SELL",
+            "lot":        pos.volume,
+            "price_open": price_open,
+            "price_now":  harga_kini,
+            "sl":         sl,
+            "tp":         tp,
+            "sl_pip":     sl_pip,
+            "tp_pip":     tp_pip,
+            "profit":     profit,
+            "pct_tp":     min(100.0, max(-100.0, pct_tp)),
+        })
+
+    return {"posisi": hasil}
 
 
 @app.get("/api/stats")
