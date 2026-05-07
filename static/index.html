@@ -265,6 +265,18 @@
 
   <!-- Kontrol -->
   <div class="card" style="display:flex; flex-direction:column; justify-content:center;">
+    <div id="saldo-input-wrap" style="display:none; margin-bottom:12px;">
+      <label style="font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; display:block; margin-bottom:6px;">
+        Saldo Awal Simulasi (USD)
+      </label>
+      <input id="saldo-input" type="number" min="1" max="100000" step="0.01"
+        placeholder="Contoh: 5.00 atau 10.00"
+        style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid var(--border);
+               background:var(--surface2); color:var(--text); font-size:14px; outline:none;" />
+      <div style="font-size:10px; color:var(--muted); margin-top:4px;">
+        Masukkan saldo real/demo Anda sebelum menjalankan bot
+      </div>
+    </div>
     <button id="btn-toggle" class="off" onclick="toggleBot()">▶ JALANKAN BOT</button>
     <div style="margin-top:10px; font-size:11px; color:var(--muted); text-align:center;" id="demo-aviso">
       Mode DEMO aktif — tanpa risiko nyata
@@ -382,8 +394,13 @@
       const r    = await fetch('/api/status');
       const data = await r.json();
 
-      botAktif = data.active;
-      modeDemo = data.demo;
+      botAktif     = data.active;
+      modeDemo     = data.demo;
+      modeSimulasi = data.simulasi;
+
+      // Tampilkan input saldo hanya saat simulasi & bot belum jalan
+      const inputWrap = document.getElementById('saldo-input-wrap');
+      inputWrap.style.display = (data.simulasi && !data.active) ? 'block' : 'none';
 
       // Badge SIMULASI
       document.getElementById('badge-sim').style.display =
@@ -545,10 +562,27 @@
       '<div class="log-line log-radar">Log dibersihkan</div>';
   }
 
+  let modeSimulasi = false;
+
   async function toggleBot() {
     const btn = document.getElementById('btn-toggle');
     btn.disabled = true;
     try {
+      if (!botAktif && modeSimulasi) {
+        const inputEl = document.getElementById('saldo-input');
+        const saldo   = parseFloat(inputEl.value);
+        if (!saldo || saldo < 1) {
+          tambahLog(['❌ Masukkan saldo awal yang valid (min $1) sebelum menjalankan bot']);
+          return;
+        }
+        const rs = await fetch(`/api/set_saldo?saldo=${saldo}`);
+        const ds = await rs.json();
+        if (ds.status === 'error') {
+          tambahLog(['❌ ' + ds.message]);
+          return;
+        }
+        tambahLog([`💰 Saldo awal diset: $${saldo.toFixed(2)}`]);
+      }
       const r    = await fetch(`/api/toggle?active=${!botAktif}`);
       const data = await r.json();
       if (data.status === 'error') tambahLog(['❌ ' + data.message]);

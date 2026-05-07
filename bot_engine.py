@@ -32,6 +32,9 @@ load_dotenv()
 # Zona waktu WIB = UTC+7
 WIB = datetime.timezone(datetime.timedelta(hours=7))
 
+# Saldo default simulasi — dibaca dari env var, dipakai sebagai fallback di seluruh modul
+_SALDO_SIM_DEFAULT = float(os.getenv("SALDO_SIMULASI", "10.0"))
+
 def _sekarang_wib():
     return datetime.datetime.now(WIB)
 
@@ -201,9 +204,9 @@ class ArgenBotPro:
 
         # Seed data awal simulator supaya chart tidak kosong sebelum bot distart
         if MODE_SIMULASI:
-            self._saldo_awal_modal = 7.5
-            self._saldo_terakhir   = 7.5
-            self._seed_riwayat_simulasi(7.5)
+            self._saldo_awal_modal = _SALDO_SIM_DEFAULT
+            self._saldo_terakhir   = _SALDO_SIM_DEFAULT
+            self._seed_riwayat_simulasi(_SALDO_SIM_DEFAULT)
 
     # ══════════════════════════════════════════════════════
     #  KONEKSI
@@ -213,12 +216,13 @@ class ArgenBotPro:
         if MODE_SIMULASI:
             mt5.initialize()
             mt5.login(self.login, self.password, self.server)
-            self._reset_tracker_harian(7.5)
-            if self._saldo_awal_modal <= 0:
-                self._saldo_awal_modal = 7.5
-            self._saldo_terakhir = 7.5
+            info_sim = mt5.account_info()
+            saldo_sim = info_sim.balance if info_sim else self._saldo_awal_modal if self._saldo_awal_modal > 0 else _SALDO_SIM_DEFAULT
+            self._reset_tracker_harian(saldo_sim)
+            self._saldo_awal_modal = saldo_sim
+            self._saldo_terakhir   = saldo_sim
             if not self._riwayat_ekuitas:
-                self._seed_riwayat_simulasi(7.5)
+                self._seed_riwayat_simulasi(saldo_sim)
             return True, "Terhubung dalam Mode Simulasi (Linux/Termux)"
 
         if not mt5.initialize():
@@ -1003,7 +1007,7 @@ class ArgenBotPro:
             return log
 
         # Target dinamis berdasarkan saldo saat ini
-        saldo  = self._saldo_terakhir if self._saldo_terakhir > 0 else 7.5
+        saldo  = self._saldo_terakhir if self._saldo_terakhir > 0 else _SALDO_SIM_DEFAULT
         target = self._hitung_target_profit_dinamis(saldo)
 
         for pos in semua_posisi:
@@ -1046,10 +1050,10 @@ class ArgenBotPro:
     def _hitung_target_profit_dinamis(self, saldo):
         """
         Target profit per trade tumbuh proporsional dengan saldo.
-        Basis: TARGET_PROFIT_USD untuk saldo awal $7.50.
+        Basis: TARGET_PROFIT_USD untuk saldo awal dari _SALDO_SIM_DEFAULT.
         Naik otomatis saat saldo berkembang — fitur kompounding.
         """
-        saldo_basis = self._saldo_awal_modal if self._saldo_awal_modal > 0 else 7.5
+        saldo_basis = self._saldo_awal_modal if self._saldo_awal_modal > 0 else _SALDO_SIM_DEFAULT
         # Skala linier: target naik proporsional dengan pertumbuhan saldo
         faktor = saldo / saldo_basis if saldo_basis > 0 else 1.0
         # Batasi faktor agar tidak terlalu agresif (maks 5× dari target awal)
@@ -1084,7 +1088,7 @@ class ArgenBotPro:
             return log
 
         # Ambil data akun — gunakan saldo terakhir yang diketahui sebagai default
-        saldo   = self._saldo_terakhir if self._saldo_terakhir > 0 else 7.5
+        saldo   = self._saldo_terakhir if self._saldo_terakhir > 0 else _SALDO_SIM_DEFAULT
         ekuitas = saldo
         if mt5.terminal_info():
             info_akun = mt5.account_info()

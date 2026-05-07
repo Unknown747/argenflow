@@ -219,6 +219,30 @@ async def ambil_trades():
     return {"trades": bot.dapatkan_trades_terakhir(20)}
 
 
+@app.get("/api/set_saldo")
+async def set_saldo(saldo: float):
+    """Set saldo awal simulasi sebelum bot dijalankan. Hanya berlaku di mode simulasi."""
+    if not BOT_TERSEDIA or bot is None:
+        return {"status": "error", "message": "Bot tidak tersedia"}
+    if bot.is_running:
+        return {"status": "error", "message": "Hentikan bot terlebih dahulu sebelum mengubah saldo"}
+    if saldo < 1.0 or saldo > 100_000.0:
+        return {"status": "error", "message": "Saldo tidak valid (min $1, maks $100.000)"}
+
+    if MODE_SIMULASI:
+        try:
+            import mt5_sim
+            mt5_sim.set_saldo_simulasi(saldo)
+        except Exception:
+            pass
+
+    bot._saldo_awal_modal = round(saldo, 2)
+    bot._saldo_terakhir   = round(saldo, 2)
+    bot._riwayat_ekuitas  = []
+    bot._seed_riwayat_simulasi(round(saldo, 2))
+    return {"status": "ok", "saldo": round(saldo, 2)}
+
+
 @app.get("/api/modal_kecil/status")
 async def status_modal_kecil():
     """Status mode modal kecil: lot, SL, TP, spread per simbol, dan sisa drawdown."""
