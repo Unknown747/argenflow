@@ -183,17 +183,35 @@ def _perbarui_harga(simbol):
 
 
 def _buat_candles(simbol, jumlah):
-    """Buat data candle OHLC realistis untuk indikator."""
-    vol    = _VOLATILITAS.get(simbol, 0.001)
-    digit  = _DIGIT_SIMBOL.get(simbol, 5)
-    harga  = _harga_sekarang.get(simbol, _harga_dasar.get(simbol, 1.0))
-    ts     = int(time.time()) - jumlah * 900
-    candles = []
+    """
+    Buat data candle OHLC realistis untuk indikator.
+    Penting: harga sekarang = close candle TERAKHIR (terbaru),
+    sehingga EMA/RSI dihitung terhadap harga live yang benar.
+    """
+    vol   = _VOLATILITAS.get(simbol, 0.001)
+    digit = _DIGIT_SIMBOL.get(simbol, 5)
 
-    for _ in range(jumlah):
-        buka   = harga
-        gerak  = random.gauss(0, vol)
-        tutup  = round(buka + gerak, digit)
+    # ── Bangun daftar harga close mundur dari harga sekarang ──
+    harga_akhir = _harga_sekarang.get(simbol, _harga_dasar.get(simbol, 1.0))
+    closes = [harga_akhir]
+    # Tambahkan bias tren ringan (60% kemungkinan melanjutkan arah)
+    arah = 1 if random.random() > 0.5 else -1
+    for i in range(jumlah - 1):
+        if random.random() < 0.60:
+            gerak = abs(random.gauss(0, vol)) * arah
+        else:
+            gerak = random.gauss(0, vol)
+            arah  = -arah
+        closes.insert(0, round(closes[0] - gerak, digit))
+
+    # ── Bangun candle OHLC dari daftar close ──────────────────
+    ts = int(time.time()) - jumlah * 900
+    candles = []
+    for i, tutup in enumerate(closes):
+        if i == 0:
+            buka = round(tutup - random.gauss(0, vol * 0.3), digit)
+        else:
+            buka = closes[i - 1]   # open = close candle sebelumnya
         tinggi = round(max(buka, tutup) + abs(random.gauss(0, vol * 0.5)), digit)
         rendah = round(min(buka, tutup) - abs(random.gauss(0, vol * 0.5)), digit)
         candles.append({
@@ -206,8 +224,7 @@ def _buat_candles(simbol, jumlah):
             "spread":      random.randint(5, 20),
             "real_volume": 0,
         })
-        harga = tutup
-        ts   += 900
+        ts += 900
 
     return candles
 

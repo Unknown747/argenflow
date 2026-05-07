@@ -88,7 +88,7 @@ class ArgenBotPro:
         self.max_lot             = float(os.getenv("MAX_LOT",         "0.01"))   # Mikro: maks 0.01 lot
         self.min_lot             = float(os.getenv("MIN_LOT",         "0.01"))
         self.max_rugi_harian_pct = float(os.getenv("MAX_RUGI_HARIAN", "2.0"))   # Mikro: batas rugi 2%/hari
-        self.max_spread          = int(os.getenv("MAX_SPREAD",        "20"))     # Mikro: spread ketat
+        self.max_spread          = int(os.getenv("MAX_SPREAD",        "25"))     # Mikro: sedikit longgar untuk GBP
 
         # ── Target Profit Cepat — auto-close saat profit menyentuh target ──
         # Misal: masuk $1 risiko → close otomatis saat profit USD tercapai
@@ -101,8 +101,8 @@ class ArgenBotPro:
         self.periode_rsi  = int(os.getenv("PERIODE_RSI", "14"))
         self.periode_ema  = int(os.getenv("PERIODE_EMA", "50"))
         self.periode_atr  = int(os.getenv("PERIODE_ATR", "14"))
-        # Skor 70 → lebih banyak sinyal masuk tanpa mengorbankan kualitas terlalu banyak
-        self.ambang_skor  = int(os.getenv("AMBANG_SKOR", "70"))
+        # Skor 55 → EMA + RSI netral sudah cukup untuk masuk (40+15=55)
+        self.ambang_skor  = int(os.getenv("AMBANG_SKOR", "55"))
         # RSI 40/60 → zona oversold/overbought lebih lebar, frekuensi trade 2× lebih banyak
         self.rsi_beli_max = int(os.getenv("RSI_BELI_MAX", "40"))
         self.rsi_jual_min = int(os.getenv("RSI_JUAL_MIN", "60"))
@@ -913,8 +913,12 @@ class ArgenBotPro:
 
         ok, alasan_ai = self.ai.ok_untuk_trading()
         if not ok:
-            log.append(alasan_ai)
-            return log
+            if MODE_SIMULASI:
+                # Mode simulasi: tampilkan peringatan tapi tetap lanjut trading
+                log.append(alasan_ai + " [SIM: dilanjutkan]")
+            else:
+                log.append(alasan_ai)
+                return log
 
         for sim in self.daftar_simbol:
             # Filter sesi per-simbol: XAU & JPY aktif di sesi Asia juga
@@ -936,7 +940,9 @@ class ArgenBotPro:
 
             atr_pips  = self._hitung_atr_pips(sim, mt5.TIMEFRAME_M15, self.periode_atr)
             atr_harga = self._hitung_atr_harga(sim, mt5.TIMEFRAME_M15, self.periode_atr)
-            if atr_pips is None or atr_pips < 5 or atr_pips > 500:
+            # Batas ATR: XAU wajar ratusan pips, forex wajar puluhan pips
+            batas_atr_atas = 2000 if "XAU" in sim else 500
+            if atr_pips is None or atr_pips < 3 or atr_pips > batas_atr_atas:
                 log.append(f"📉 {sim}: ATR={atr_pips} di luar rentang — dilewati")
                 continue
 
@@ -960,13 +966,25 @@ class ArgenBotPro:
                 if penyesuaian is None:
                     log.append(f"🛑 {sim}: pasar VOLATIL — AIManager memblokir masuk{label_sim}")
                     continue
-                ambang = max(60, self.ambang_skor + penyesuaian)
+                ambang = max(50, self.ambang_skor + penyesuaian)
 
-            # Skor sinyal: EMA M15 (40) + RSI (30) + Engulfing M5 (30)
+            # ── Skor sinyal: EMA M15 (40) + RSI (30) + Engulfing M5 (30) ──
+            # RSI tidak mengurangi skor jika searah tren (uptrend+RSI tinggi = wajar).
+            # Hanya memberi bonus jika RSI di zona favorable, bukan hukuman searah tren.
             skor = 0
-            skor += 40 if harga > ema_val else -40
-            if rsi_val < self.rsi_beli_max:    skor += 30
-            elif rsi_val > self.rsi_jual_min:  skor -= 30
+            bullish = harga > ema_val
+            skor   += 40 if bullish else -40
+
+            # RSI: bonus jika mendukung arah tren, bukan penalti jika searah tren
+            if bullish:
+                if rsi_val < self.rsi_beli_max:    skor += 30   # Oversold di uptrend = kuat
+                elif rsi_val <= 60:                skor += 15   # RSI netral/sedang = oke
+                elif rsi_val > 80:                 skor -= 20   # Sangat overbought = waspada
+            else:
+                if rsi_val > self.rsi_jual_min:    skor -= 30   # Overbought di downtrend = kuat
+                elif rsi_val >= 40:                skor -= 15   # RSI netral/sedang = oke
+                elif rsi_val < 20:                 skor += 20   # Sangat oversold = waspada
+
             if pola == "BELI":    skor += 30
             elif pola == "JUAL":  skor -= 30
 
@@ -978,7 +996,7 @@ class ArgenBotPro:
             else:
                 arah_ema = "↑" if harga > ema_val else "↓"
                 log.append(
-                    f"📡 {sim} | Skor {skor:+d} (±{ambang}) | RSI {rsi_val} | "
+                    f"📡 {sim} | Skor {skor:+d} (±{ambang}) | RSI {rsi_val:.0f} | "
                     f"ATR {atr_pips} | EMA {arah_ema} | {pola}{label_sim}"
                 )
                 continue
